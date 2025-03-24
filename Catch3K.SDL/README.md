@@ -1,0 +1,152 @@
+# Catch3K SDL - 4K Rhythm Game
+
+A C# implementation of a 4-key rhythm game using SDL2. It reads beatmaps directly from your local osu! Songs folder, converts them to a 4-key format, and displays the converted beatmap with synchronized note timing.
+
+## Features
+
+- Displays a 4-key playfield using SDL2 for rendering
+- Loads beatmaps directly from your local osu! Songs folder
+- Parses and converts beatmaps to 4-key format
+- Visual effects for hits and misses
+- Support for both normal notes and long notes
+- Audio playback with NAudio (supports MP3, WAV, OGG formats)
+- Menu system for song selection with multiple difficulty support
+- Score and combo display
+- Game pause functionality
+
+## Requirements
+
+- .NET 6.0 or later
+- SDL2 libraries (SDL2.dll, SDL2_ttf.dll)
+- Windows (can be adapted for other platforms)
+- osu! installation with beatmaps in the Songs folder (optional - can specify a different folder)
+
+## Installation
+
+1. Make sure you have the .NET SDK installed
+2. Clone or download this repository
+3. Use the included setup script to download and install SDL2 libraries:
+   ```
+   powershell -ExecutionPolicy Bypass -File setup-sdl.ps1
+   ```
+   
+   Alternatively, you can download the SDL2 libraries manually and place them in the output directory:
+   - SDL2.dll - Download from https://github.com/libsdl-org/SDL/releases (look for SDL2-x.x.x-win32-x64.zip or x86 if you need 32-bit)
+   - SDL2_ttf.dll - Download from https://www.libsdl.org/projects/SDL_ttf/release/ (look for SDL2_ttf-x.x.x-win32-x64.zip or x86 if you need 32-bit)
+   - Place the DLLs in your project's bin directory (e.g., Catch3K.SDL/bin/Debug/net6.0/)
+   - You may also need any dependency DLLs that come with SDL2_ttf (like freetype.dll and zlib1.dll)
+
+## How to Run
+
+After installing the SDL2 libraries:
+
+```
+dotnet run --project Catch3K.SDL
+```
+
+If you encounter "DLL not found" errors, make sure the SDL2 libraries are in the output directory as described in the Installation section.
+
+## Game Flow
+
+When you start the game:
+1. The game will scan for beatmaps in your Songs directory
+2. You'll be presented with the song selection menu
+3. Use the arrow keys to navigate and select a song and difficulty
+4. Press Enter to start playing the selected beatmap
+5. During gameplay, you can press Escape to return to the menu
+
+## Controls
+
+### Global Controls
+- **F11**: Toggle fullscreen mode
+- **+/-**: Adjust volume up/down
+- **M** or **0**: Toggle mute
+
+### Menu Controls
+- **Up/Down**: Navigate through available songs or difficulties
+- **Left/Right**: Switch between song selection and difficulty selection modes
+- **Enter**: Start the selected song with the current difficulty
+- **Escape**: Exit the game
+
+### Gameplay Controls
+- **D, F, J, K**: Hit the notes in the 4 columns
+- **P**: Pause/resume the current beatmap
+- **Space**: Restart the current beatmap
+- **Escape**: Return to the song selection menu
+- **F11**: Toggle fullscreen mode (also available in menu and pause screens)
+- **+/-**: Adjust volume (also available in menu and pause screens)
+
+## Differences from WPF Version
+
+This SDL2 version offers:
+- Better performance for rhythm games
+- Cross-platform potential (with some modifications)
+- Lower-level rendering for more control
+- More suitable for game development
+
+## Development
+
+To build the project:
+
+```
+dotnet build
+```
+
+### Implementation Notes
+
+When implementing SDL2 with C#:
+1. Use the SDL2-CS.NetCore NuGet package for C# bindings
+2. For keyboard scancodes, use the `SDL_Scancode` enum instead of constants
+3. Make sure to declare SDL-related variables and fields as nullable where appropriate
+4. For multiple random number generation, use a single Random instance rather than creating a new instance each time
+5. Remember to handle and dispose of SDL resources properly in the Dispose() method
+6. For text rendering, use SDL_ttf and cache rendered textures for better performance
+7. Use a state machine pattern to handle different game states (menu, playing, paused)
+
+## User Interface
+
+The game includes several UI elements:
+- A main menu with both song and difficulty selection
+  - Song selection mode: Browse through all available mapsets
+  - Difficulty selection mode: Browse through all difficulties of the selected mapset
+- In-game score and combo display
+- Song information display
+- Key layout indicators with visual feedback on keypresses
+- Pause overlay with control information
+
+## Troubleshooting
+
+### "Unable to load DLL 'SDL2.dll'" or similar errors
+- Make sure you have downloaded and placed the SDL2 libraries in the output directory 
+- Run the `setup-sdl.ps1` script to automatically download and install the libraries
+- Check if there are any dependencies missing (like freetype.dll for SDL2_ttf)
+
+### Font rendering issues
+- The game tries to use system fonts. Make sure you have at least one of these fonts: Arial, Verdana, Segoe UI, or Calibri
+- You can add custom fonts to the Assets/Fonts directory and modify the font loading code in GameEngine.cs
+
+### Audio playback issues
+- The game supports MP3, WAV, and OGG audio formats
+- If you experience crackling or audio issues, try converting your audio files to a different format
+- Make sure the audio filename in the .osu file matches the actual audio file in the beatmap directory
+
+### Song selection not working
+- Make sure your beatmap folder structure follows the osu! standard format:
+  - Each folder should contain multiple .osu files (difficulties)
+  - The song file should be in the same folder as the .osu files
+- Try running the game from the command line to see any error messages about file loading
+
+## Future Improvements
+
+- Add more visual effects and animations
+- Support for custom skins
+- Add proper error handling for missing SDL2 libraries
+- Cross-platform support
+- Add results screen after completing a song
+- Settings menu for key bindings and display options
+
+## Credits
+
+- Uses SDL2 for rendering through the SDL2-CS.NetCore library
+- NAudio for audio playback
+- Uses osu! beatmap format (make sure you have legal access to these files) 
