@@ -29,7 +29,7 @@ namespace Catch3K.SDL.Engine
         private ISampleProvider? _sampleProvider;
         private IDisposable? _audioReader;
         private bool _audioLoaded = false;
-        private float _volume = 0.7f; // Default volume at 70%
+        private float _volume = 0.3f; // Default volume at 70%
         
         // SDL related variables
         private IntPtr _window;
@@ -101,24 +101,43 @@ namespace Catch3K.SDL.Engine
         
         public GameEngine(string? songsDirectory = null)
         {
-
-            _noteSpeed = (double)_noteSpeedSetting / 1000.0;
-
             _beatmapService = new BeatmapService(songsDirectory);
             _gameTimer = new Stopwatch();
             _availableBeatmapSets = new List<BeatmapSet>();
             
-            // Calculate lane positions
-            _noteFallDistance = _windowHeight - 100;
-            _hitPosition = _windowHeight - 100;
+            // Calculate note speed based on setting (pixels per second)
+            _noteSpeed = (double)_noteSpeedSetting / 1000.0;
             
-            for (int i = 0; i < 4; i++)
-            {
-                _lanePositions[i] = 200 + (i * _laneWidth);
-            }
+            // Initialize playfield layout
+            InitializePlayfield();
             
             // Initialize audio player
             InitializeAudioPlayer();
+        }
+        
+        // Initialize the playfield layout based on window dimensions
+        private void InitializePlayfield()
+        {
+            // Calculate playfield dimensions based on window size
+            _noteFallDistance = _windowHeight - 100;
+            _hitPosition = _windowHeight - 100;
+            
+            // Calculate lane width as a proportion of window width
+            // Using 50% of window width for the entire playfield
+            int totalPlayfieldWidth = (int)(_windowWidth * 0.5);
+            _laneWidth = totalPlayfieldWidth / 4;
+            
+            // Calculate playfield center and left edge
+            int playfieldCenter = _windowWidth / 2;
+            int playfieldWidth = _laneWidth * 4;
+            int leftEdge = playfieldCenter - (playfieldWidth / 2);
+            
+            // Initialize lane positions
+            _lanePositions = new int[4];
+            for (int i = 0; i < 4; i++)
+            {
+                _lanePositions[i] = leftEdge + (i * _laneWidth) + (_laneWidth / 2);
+            }
         }
         
         private void InitializeAudioPlayer()
@@ -746,7 +765,6 @@ namespace Catch3K.SDL.Engine
             _hitEffects.Add((lane, _currentTime));
                 
             // Check for notes in the hit window
-            bool hitFound = false;
             foreach (var noteEntry in _activeNotes)
             {
                 var note = noteEntry.Note;
@@ -761,8 +779,6 @@ namespace Catch3K.SDL.Engine
                     if (timeDiff <= _hitWindowMs)
                     {
                         // Hit!
-                        hitFound = true;
-                        
                         // Mark note as hit
                         var index = _activeNotes.IndexOf(noteEntry);
                         if (index >= 0)
@@ -781,12 +797,8 @@ namespace Catch3K.SDL.Engine
                 }
             }
             
-            if (!hitFound)
-            {
-                // Miss (hit when no note is available)
-                _combo = 0;
-                Console.WriteLine("Miss! (no note)");
-            }
+            // No penalty for key presses when no note is in hit window
+            // Just add the visual hit effect which was already done above
         }
         
         private void Update()
@@ -991,13 +1003,15 @@ namespace Catch3K.SDL.Engine
             SDL_SetRenderDrawColor(_renderer, 100, 100, 100, 255);
             for (int i = 0; i <= 4; i++)
             {
-                int x = 200 + (i * _laneWidth);
+                int x = _lanePositions[0] - (_laneWidth / 2) + (i * _laneWidth);
                 SDL_RenderDrawLine(_renderer, x, 0, x, _windowHeight);
             }
             
             // Draw hit position line
             SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 255);
-            SDL_RenderDrawLine(_renderer, 200, _hitPosition, 200 + (_laneWidth * 4), _hitPosition);
+            int lineStartX = _lanePositions[0] - (_laneWidth / 2);
+            int lineEndX = _lanePositions[3] + (_laneWidth / 2);
+            SDL_RenderDrawLine(_renderer, lineStartX, _hitPosition, lineEndX, _hitPosition);
             
             // Draw lane keys
             for (int i = 0; i < 4; i++)
@@ -1043,7 +1057,8 @@ namespace Catch3K.SDL.Engine
                 if (elapsed <= 300)
                 {
                     // Calculate size and alpha based on elapsed time
-                    int size = (int)(100 * (1 - (elapsed / 300)));
+                    float effectSize = _laneWidth * 1.2f;
+                    int size = (int)(effectSize * (1 - (elapsed / 300)));
                     byte alpha = (byte)(255 * (1 - (elapsed / 300)));
                     
                     SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
@@ -1075,13 +1090,17 @@ namespace Catch3K.SDL.Engine
                 double timeOffset = note.StartTime - _currentTime;
                 double noteY = _hitPosition - (timeOffset * _noteSpeed);
                 
+                // Calculate note dimensions - scale with lane width
+                int noteWidth = (int)(_laneWidth * 0.8);
+                int noteHeight = (int)(_laneWidth * 0.4);
+                
                 // Draw note
                 SDL_Rect noteRect = new SDL_Rect
                 {
-                    x = laneX + 7,
-                    y = (int)noteY - 15,
-                    w = 60,
-                    h = 30
+                    x = laneX - (noteWidth / 2),
+                    y = (int)noteY - (noteHeight / 2),
+                    w = noteWidth,
+                    h = noteHeight
                 };
                 
                 SDL_SetRenderDrawColor(_renderer, _laneColors[note.Column].r, _laneColors[note.Column].g, _laneColors[note.Column].b, 255);
@@ -1201,6 +1220,10 @@ namespace Catch3K.SDL.Engine
         // Toggle fullscreen mode
         private void ToggleFullscreen()
         {
+            // Store previous dimensions for scaling calculation
+            int prevWidth = _windowWidth;
+            int prevHeight = _windowHeight;
+            
             _isFullscreen = !_isFullscreen;
             
             uint flags = _isFullscreen ? 
@@ -1222,7 +1245,53 @@ namespace Catch3K.SDL.Engine
             _windowWidth = w;
             _windowHeight = h;
             
+            // Recalculate playfield geometry based on new window dimensions
+            RecalculatePlayfield(prevWidth, prevHeight);
+            
             Console.WriteLine($"Toggled fullscreen mode: {_isFullscreen} ({_windowWidth}x{_windowHeight})");
+        }
+        
+        // Recalculate playfield geometry when window size changes
+        private void RecalculatePlayfield(int previousWidth, int previousHeight)
+        {
+            // Calculate scaling factors
+            float scaleX = (float)_windowWidth / previousWidth;
+            float scaleY = (float)_windowHeight / previousHeight;
+            
+            // Update hit position and fall distance (based on window height)
+            _hitPosition = (int)(_hitPosition * scaleY);
+            _noteFallDistance = (int)(_noteFallDistance * scaleY);
+            
+            // Update lane width (based on window width)
+            _laneWidth = (int)(_laneWidth * scaleX);
+            
+            // Recenter the playfield horizontally
+            int playfieldCenter = _windowWidth / 2;
+            int playfieldWidth = _laneWidth * 4;
+            int leftEdge = playfieldCenter - (playfieldWidth / 2);
+            
+            // Update lane positions
+            for (int i = 0; i < 4; i++)
+            {
+                _lanePositions[i] = leftEdge + (i * _laneWidth) + (_laneWidth / 2);
+            }
+            
+            // Clear texture cache since we need to render at new dimensions
+            ClearTextureCache();
+        }
+        
+        // Clear texture cache to force re-rendering at new dimensions
+        private void ClearTextureCache()
+        {
+            // Clean up text textures
+            foreach (var texture in _textTextures.Values)
+            {
+                if (texture != IntPtr.Zero)
+                {
+                    SDL_DestroyTexture(texture);
+                }
+            }
+            _textTextures.Clear();
         }
         
         // Adjust volume
