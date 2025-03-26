@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Catch3K.SDL")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2974ce72af20a52e963d016f77ef94f403b42220")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+499b279602784fb6d1854acdb6923e7cec4c3f98")]
 [assembly: System.Reflection.AssemblyProductAttribute("Catch3K.SDL")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Catch3K.SDL")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

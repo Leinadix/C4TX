@@ -20,6 +20,7 @@ namespace Catch3K.SDL.Engine
         private double _currentTime;
         private Stopwatch _gameTimer;
         private List<BeatmapSet>? _availableBeatmapSets;
+        private const int START_DELAY_MS = 3000; // 3 second delay at start
         
         // Audio playback components
         private bool _audioEnabled = true;
@@ -29,7 +30,7 @@ namespace Catch3K.SDL.Engine
         private ISampleProvider? _sampleProvider;
         private IDisposable? _audioReader;
         private bool _audioLoaded = false;
-        private float _volume = 0.3f; // Default volume at 70%
+        private float _volume = 0.3f; // Default volume at 30% (will be scaled to 75%)
         
         // SDL related variables
         private IntPtr _window;
@@ -46,8 +47,8 @@ namespace Catch3K.SDL.Engine
         private Dictionary<string, IntPtr> _textTextures = new Dictionary<string, IntPtr>();
         
         // Game settings
-        private int _noteSpeedSetting = 1200; // Pixels per second
-        private double _noteSpeed; // Pixels per millisecond
+        private double _noteSpeedSetting = 0.8; // Percentage of screen height per second (80%)
+        private double _noteSpeed; // Percentage per millisecond
         private double _noteFallDistance;
         private int[] _lanePositions = new int[4];
         private int _laneWidth = 75;
@@ -80,13 +81,17 @@ namespace Catch3K.SDL.Engine
         private int _score = 0;
         private int _combo = 0;
         private int _maxCombo = 0;
+        private double _totalAccuracy = 0;
+        private int _totalNotes = 0;
+        private double _currentAccuracy = 0;
         
         // Game state enum
         private enum GameState
         {
             Menu,
             Playing,
-            Paused
+            Paused,
+            Results
         }
         
         private GameState _currentState = GameState.Menu;
@@ -99,14 +104,19 @@ namespace Catch3K.SDL.Engine
         private bool _showVolumeIndicator = false;
         private float _lastVolume = 0.7f;
         
+        // For results screen
+        private List<(double NoteTime, double HitTime, double Deviation)> _noteHits = new List<(double, double, double)>();
+        private double _songEndTime = 0;
+        private bool _hasShownResults = false;
+        
         public GameEngine(string? songsDirectory = null)
         {
             _beatmapService = new BeatmapService(songsDirectory);
             _gameTimer = new Stopwatch();
             _availableBeatmapSets = new List<BeatmapSet>();
             
-            // Calculate note speed based on setting (pixels per second)
-            _noteSpeed = (double)_noteSpeedSetting / 1000.0;
+            // Calculate note speed based on setting (percentage per second)
+            _noteSpeed = _noteSpeedSetting / 1000.0; // Convert to percentage per millisecond
             
             // Initialize playfield layout
             InitializePlayfield();
@@ -347,6 +357,9 @@ namespace Catch3K.SDL.Engine
                 _score = 0;
                 _combo = 0;
                 _maxCombo = 0;
+                _totalAccuracy = 0;
+                _totalNotes = 0;
+                _currentAccuracy = 0;
                 _activeNotes.Clear();
                 _hitEffects.Clear();
                 
@@ -421,6 +434,16 @@ namespace Catch3K.SDL.Engine
                 
                 _audioLoaded = true;
                 
+                // Ensure audio player is initialized
+                if (_audioPlayer == null)
+                {
+                    _audioPlayer = new WaveOutEvent();
+                    _audioPlayer.PlaybackStopped += (s, e) => 
+                    {
+                        Console.WriteLine("Audio playback stopped");
+                    };
+                }
+                
                 if (_audioPlayer != null && _audioFile != null)
                 {
                     _audioPlayer.Init(_audioFile);
@@ -451,7 +474,24 @@ namespace Catch3K.SDL.Engine
             _gameTimer.Start();
             _currentState = GameState.Playing;
             
-            // Start audio playback
+            // Reset results data
+            _noteHits.Clear();
+            _hasShownResults = false;
+            
+            // Clear all active notes and hit effects
+            _activeNotes.Clear();
+            _hitEffects.Clear();
+            
+            // Reset key states
+            for (int i = 0; i < 4; i++)
+            {
+                _keyStates[i] = 0;
+            }
+            
+            // Set song end time (use the last note's time + 5 seconds)
+            _songEndTime = _currentBeatmap.HitObjects.Max(n => n.StartTime) + 5000;
+            
+            // Start audio playback with delay
             if (_audioEnabled && _audioLoaded && _audioPlayer != null && _audioFile != null)
             {
                 try
@@ -466,8 +506,15 @@ namespace Catch3K.SDL.Engine
                         vorbisReader.Position = 0;
                     }
                     
-                    _audioPlayer.Play();
-                    Console.WriteLine("Audio playback started");
+                    // Stop any current playback
+                    _audioPlayer.Stop();
+                    
+                    // Start audio playback after the delay
+                    Task.Delay(START_DELAY_MS).ContinueWith(_ => 
+                    {
+                        _audioPlayer.Play();
+                        Console.WriteLine("Audio playback started");
+                    });
                 }
                 catch (Exception ex)
                 {
@@ -616,35 +663,38 @@ namespace Catch3K.SDL.Engine
                 return;
             }
             
-            // Handle volume control
-            if (scancode == SDL_Scancode.SDL_SCANCODE_MINUS || 
-                scancode == SDL_Scancode.SDL_SCANCODE_KP_MINUS)
+            // Handle volume control only in menu state
+            if (_currentState == GameState.Menu)
             {
-                AdjustVolume(-0.1f);
-                return;
-            }
-            else if (scancode == SDL_Scancode.SDL_SCANCODE_EQUALS || 
-                     scancode == SDL_Scancode.SDL_SCANCODE_KP_PLUS)
-            {
-                AdjustVolume(0.1f);
-                return;
-            }
-            else if (scancode == SDL_Scancode.SDL_SCANCODE_0 ||
-                     scancode == SDL_Scancode.SDL_SCANCODE_M)
-            {
-                // Toggle mute (0% or 70%)
-                if (_volume > 0)
+                if (scancode == SDL_Scancode.SDL_SCANCODE_MINUS || 
+                    scancode == SDL_Scancode.SDL_SCANCODE_KP_MINUS)
                 {
-                    // Store current volume and mute
-                    _lastVolume = _volume;
-                    AdjustVolume(-_volume); // Set to 0
+                    AdjustVolume(-0.1f);
+                    return;
                 }
-                else
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_EQUALS || 
+                         scancode == SDL_Scancode.SDL_SCANCODE_KP_PLUS)
                 {
-                    // Restore volume
-                    AdjustVolume(_lastVolume > 0 ? _lastVolume : 0.7f);
+                    AdjustVolume(0.1f);
+                    return;
                 }
-                return;
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_0 ||
+                         scancode == SDL_Scancode.SDL_SCANCODE_M)
+                {
+                    // Toggle mute (0% or 70%)
+                    if (_volume > 0)
+                    {
+                        // Store current volume and mute
+                        _lastVolume = _volume;
+                        AdjustVolume(-_volume); // Set to 0
+                    }
+                    else
+                    {
+                        // Restore volume
+                        AdjustVolume(_lastVolume > 0 ? _lastVolume : 0.7f);
+                    }
+                    return;
+                }
             }
             
             // Handle different keys based on game state
@@ -738,6 +788,17 @@ namespace Catch3K.SDL.Engine
                     _isRunning = false;
                 }
             }
+            else if (_currentState == GameState.Results)
+            {
+                if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
+                {
+                    _currentState = GameState.Menu;
+                }
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_SPACE)
+                {
+                    Start();
+                }
+            }
         }
         
         private void HandleKeyUp(SDL_Scancode scancode)
@@ -775,7 +836,10 @@ namespace Catch3K.SDL.Engine
                     
                 if (note.Column == lane)
                 {
-                    double timeDiff = Math.Abs(_currentTime - note.StartTime);
+                    // Adjust note timing to account for start delay
+                    double adjustedStartTime = note.StartTime + START_DELAY_MS;
+                    double timeDiff = Math.Abs(_currentTime - adjustedStartTime);
+                    
                     if (timeDiff <= _hitWindowMs)
                     {
                         // Hit!
@@ -786,12 +850,22 @@ namespace Catch3K.SDL.Engine
                             _activeNotes[index] = (note, true);
                         }
                         
+                        // Calculate accuracy for this note
+                        double noteAccuracy = 1.0 - (timeDiff / _hitWindowMs);
+                        _totalAccuracy += noteAccuracy;
+                        _totalNotes++;
+                        _currentAccuracy = _totalAccuracy / _totalNotes;
+                        
+                        // Store hit data for results screen
+                        double deviation = _currentTime - adjustedStartTime; // Positive = late, negative = early
+                        _noteHits.Add((note.StartTime, _currentTime, deviation));
+                        
                         // Update score
                         _score += 100 + (_combo * 5);
                         _combo++;
                         _maxCombo = Math.Max(_maxCombo, _combo);
                         
-                        Console.WriteLine($"Hit! Score: {_score}, Combo: {_combo}");
+                        Console.WriteLine($"Hit! Score: {_score}, Combo: {_combo}, Accuracy: {noteAccuracy:P2}");
                         break;
                     }
                 }
@@ -808,16 +882,27 @@ namespace Catch3K.SDL.Engine
             {
                 _currentTime = _gameTimer.ElapsedMilliseconds;
                 
+                // Check if song has ended
+                if (_currentBeatmap != null && _currentTime >= _songEndTime && !_hasShownResults)
+                {
+                    _currentState = GameState.Results;
+                    _hasShownResults = true;
+                    return;
+                }
+                
                 // Update active notes list
                 if (_currentBeatmap != null)
                 {
                     // Add notes that are within the visible time window to the active notes list
-                    double visibleTimeWindow = _noteFallDistance / _noteSpeed;
+                    double visibleTimeWindow = _noteFallDistance / (_noteSpeed * _windowHeight);
                     
                     foreach (var hitObject in _currentBeatmap.HitObjects)
                     {
-                        if (hitObject.StartTime <= _currentTime + visibleTimeWindow && 
-                            hitObject.StartTime >= _currentTime - _hitWindowMs)
+                        // Adjust note timing to account for start delay
+                        double adjustedStartTime = hitObject.StartTime + START_DELAY_MS;
+                        
+                        if (adjustedStartTime <= _currentTime + visibleTimeWindow && 
+                            adjustedStartTime >= _currentTime - _hitWindowMs)
                         {
                             // Check if this note is already in the active notes list
                             bool exists = _activeNotes.Any(n => n.Note == hitObject);
@@ -834,14 +919,17 @@ namespace Catch3K.SDL.Engine
                         var note = _activeNotes[i].Note;
                         var hit = _activeNotes[i].Hit;
                         
-                        if (note.StartTime < _currentTime - _hitWindowMs && !hit)
+                        // Adjust note timing to account for start delay
+                        double adjustedStartTime = note.StartTime + START_DELAY_MS;
+                        
+                        if (adjustedStartTime < _currentTime - _hitWindowMs && !hit)
                         {
                             // This note was missed
                             _combo = 0;
                             Console.WriteLine("Miss!");
                             _activeNotes.RemoveAt(i);
                         }
-                        else if (note.StartTime < _currentTime - 500) // Remove hit notes after a while
+                        else if (adjustedStartTime < _currentTime - 500) // Remove hit notes after a while
                         {
                             _activeNotes.RemoveAt(i);
                         }
@@ -893,6 +981,10 @@ namespace Catch3K.SDL.Engine
                 {
                     RenderPauseOverlay();
                 }
+            }
+            else if (_currentState == GameState.Results)
+            {
+                RenderResults();
             }
             
             // Update screen
@@ -1057,7 +1149,7 @@ namespace Catch3K.SDL.Engine
                 if (elapsed <= 300)
                 {
                     // Calculate size and alpha based on elapsed time
-                    float effectSize = _laneWidth * 1.2f;
+                    float effectSize = Math.Min(_laneWidth * 1.2f, 100); // Limit maximum size
                     int size = (int)(effectSize * (1 - (elapsed / 300)));
                     byte alpha = (byte)(255 * (1 - (elapsed / 300)));
                     
@@ -1087,8 +1179,10 @@ namespace Catch3K.SDL.Engine
                 
                 // Calculate note position
                 int laneX = _lanePositions[note.Column];
-                double timeOffset = note.StartTime - _currentTime;
-                double noteY = _hitPosition - (timeOffset * _noteSpeed);
+                // Adjust note timing to account for start delay
+                double adjustedStartTime = note.StartTime + START_DELAY_MS;
+                double timeOffset = adjustedStartTime - _currentTime;
+                double noteY = _hitPosition - (timeOffset * _noteSpeed * _windowHeight);
                 
                 // Calculate note dimensions - scale with lane width
                 int noteWidth = (int)(_laneWidth * 0.8);
@@ -1120,6 +1214,12 @@ namespace Catch3K.SDL.Engine
                 RenderText($"{_combo}x", 10, 40, _comboColor, largeText);
             }
             
+            // Draw accuracy
+            if (_totalNotes > 0)
+            {
+                RenderText($"Accuracy: {_currentAccuracy:P2}", 10, 70, _textColor);
+            }
+            
             // Draw song info at the top
             if (_currentBeatmap != null)
             {
@@ -1127,8 +1227,15 @@ namespace Catch3K.SDL.Engine
                 RenderText(songInfo, _windowWidth / 2, 10, _textColor, false, true);
             }
             
+            // Draw countdown if in start delay
+            if (_currentTime < START_DELAY_MS)
+            {
+                int countdown = (int)Math.Ceiling((START_DELAY_MS - _currentTime) / 1000.0);
+                RenderText(countdown.ToString(), _windowWidth / 2, _windowHeight / 2, _textColor, true, true);
+            }
+            
             // Draw controls reminder at the bottom
-            RenderText("Space: Restart | Esc: Menu | P: Pause | F11: Fullscreen | +/-: Volume", _windowWidth / 2, _windowHeight - 20, _textColor, false, true);
+            RenderText("Space: Restart | Esc: Menu | P: Pause | F11: Fullscreen", _windowWidth / 2, _windowHeight - 20, _textColor, false, true);
             
             // Draw volume indicator if needed
             if (_showVolumeIndicator)
@@ -1184,8 +1291,8 @@ namespace Catch3K.SDL.Engine
             
             SDL_RenderFillRect(_renderer, ref bgRect);
             
-            // Draw volume text
-            string volumeText = _volume <= 0 ? "Volume: Muted" : $"Volume: {_volume * 100:0}%";
+            // Draw volume text (show as percentage of full range)
+            string volumeText = _volume <= 0 ? "Volume: Muted" : $"Volume: {_volume * 250:0}%";
             RenderText(volumeText, _windowWidth / 2, y + 20, _textColor, false, true);
             
             // Draw volume bar
@@ -1205,16 +1312,152 @@ namespace Catch3K.SDL.Engine
             };
             SDL_RenderFillRect(_renderer, ref barBgRect);
             
-            // Volume level bar
+            // Volume level bar (show as percentage of full range)
             SDL_SetRenderDrawColor(_renderer, 50, 200, 50, 255);
             SDL_Rect barLevelRect = new SDL_Rect
             {
                 x = barX,
                 y = barY,
-                w = (int)(barWidth * _volume),
+                w = (int)(barWidth * (_volume * 2.5f)),
                 h = barHeight
             };
             SDL_RenderFillRect(_renderer, ref barLevelRect);
+        }
+        
+        private void RenderResults()
+        {
+            // Draw title
+            RenderText("Results", _windowWidth / 2, 50, _textColor, true, true);
+            
+            // Draw overall stats with descriptions
+            RenderText($"Score: {_score}", _windowWidth / 2, 100, _textColor, false, true);
+            RenderText($"Max Combo: {_maxCombo}x", _windowWidth / 2, 130, _textColor, false, true);
+            RenderText($"Accuracy: {_currentAccuracy:P2}", _windowWidth / 2, 160, _textColor, false, true);
+            
+            // Draw graph
+            if (_noteHits.Count > 0)
+            {
+                // Calculate graph dimensions
+                int graphWidth = (int)(_windowWidth * 0.8);
+                int graphHeight = 300;
+                int graphX = (_windowWidth - graphWidth) / 2;
+                int graphY = 200;
+                
+                // Draw graph background
+                SDL_SetRenderDrawColor(_renderer, 60, 60, 80, 255);
+                SDL_Rect graphRect = new SDL_Rect
+                {
+                    x = graphX,
+                    y = graphY,
+                    w = graphWidth,
+                    h = graphHeight
+                };
+                SDL_RenderFillRect(_renderer, ref graphRect);
+                
+                // Draw grid lines
+                SDL_SetRenderDrawColor(_renderer, 100, 100, 120, 255);
+                
+                // Vertical grid lines (every 10 seconds)
+                for (int i = 0; i <= 10; i++)
+                {
+                    int x = graphX + (i * graphWidth / 10);
+                    SDL_RenderDrawLine(_renderer, x, graphY, x, graphY + graphHeight);
+                    
+                    // Draw time labels
+                    int seconds = i * 10;
+                    RenderText($"{seconds}s", x, graphY + graphHeight + 5, _textColor, false, true);
+                }
+                
+                // Horizontal grid lines (every 50ms)
+                for (int i = -2; i <= 2; i++)
+                {
+                    int y = graphY + graphHeight/2 - (i * graphHeight/4);
+                    SDL_RenderDrawLine(_renderer, graphX, y, graphX + graphWidth, y);
+                    
+                    // Draw deviation labels
+                    int ms = i * 50;
+                    string label = ms > 0 ? $"+{ms}ms" : $"{ms}ms";
+                    RenderText(label, graphX - 40, y, _textColor, false, true);
+                }
+                
+                // Draw center line
+                SDL_SetRenderDrawColor(_renderer, 200, 200, 200, 255);
+                int centerY = graphY + graphHeight/2;
+                SDL_RenderDrawLine(_renderer, graphX, centerY, graphX + graphWidth, centerY);
+                
+                // Draw hit points with color coding
+                double maxTime = _noteHits.Max(h => h.NoteTime);
+                double minTime = _noteHits.Min(h => h.NoteTime);
+                double timeRange = maxTime - minTime;
+                
+                foreach (var hit in _noteHits)
+                {
+                    // Calculate x position based on note time
+                    double timeProgress = (hit.NoteTime - minTime) / timeRange;
+                    int x = graphX + (int)(timeProgress * graphWidth);
+                    
+                    // Calculate y position based on deviation
+                    double maxDeviation = _hitWindowMs;
+                    double yProgress = hit.Deviation / maxDeviation;
+                    int y = centerY - (int)(yProgress * (graphHeight/2));
+                    
+                    // Clamp y to graph bounds
+                    y = Math.Clamp(y, graphY, graphY + graphHeight);
+                    
+                    // Color coding based on deviation
+                    byte r, g, b;
+                    if (hit.Deviation < 0)
+                    {
+                        // Early hits (red)
+                        r = 255;
+                        g = (byte)(255 * (1 - Math.Abs(yProgress)));
+                        b = (byte)(255 * (1 - Math.Abs(yProgress)));
+                    }
+                    else if (hit.Deviation > 0)
+                    {
+                        // Late hits (green)
+                        r = (byte)(255 * (1 - Math.Abs(yProgress)));
+                        g = 255;
+                        b = (byte)(255 * (1 - Math.Abs(yProgress)));
+                    }
+                    else
+                    {
+                        // Perfect hits (white)
+                        r = 255;
+                        g = 255;
+                        b = 255;
+                    }
+                    
+                    SDL_SetRenderDrawColor(_renderer, r, g, b, 255);
+                    
+                    SDL_Rect pointRect = new SDL_Rect
+                    {
+                        x = x - 2,
+                        y = y - 2,
+                        w = 4,
+                        h = 4
+                    };
+                    SDL_RenderFillRect(_renderer, ref pointRect);
+                }
+                
+                // Draw graph title and description
+                RenderText("Note Timing Analysis", graphX + graphWidth/2, graphY - 20, _textColor, false, true);
+                RenderText("Early hits (red) | Perfect hits (white) | Late hits (green)", graphX + graphWidth/2, graphY - 5, _textColor, false, true);
+                
+                // Draw statistics summary
+                var earlyHits = _noteHits.Count(h => h.Deviation < 0);
+                var lateHits = _noteHits.Count(h => h.Deviation > 0);
+                var perfectHits = _noteHits.Count(h => h.Deviation == 0);
+                var avgDeviation = _noteHits.Average(h => h.Deviation);
+                
+                int statsY = graphY + graphHeight + 40;
+                RenderText($"Early hits: {earlyHits} | Late hits: {lateHits} | Perfect hits: {perfectHits}", _windowWidth / 2, statsY, _textColor, false, true);
+                RenderText($"Average deviation: {avgDeviation:F1}ms", _windowWidth / 2, statsY + 25, _textColor, false, true);
+            }
+            
+            // Draw instructions
+            RenderText("Press Enter to return to menu", _windowWidth / 2, _windowHeight - 60, _textColor, false, true);
+            RenderText("Press Space to retry", _windowWidth / 2, _windowHeight - 30, _textColor, false, true);
         }
         
         // Toggle fullscreen mode
@@ -1226,16 +1469,31 @@ namespace Catch3K.SDL.Engine
             
             _isFullscreen = !_isFullscreen;
             
-            uint flags = _isFullscreen ? 
-                (uint)SDL_WindowFlags.SDL_WINDOW_FULLSCREEN_DESKTOP : 
-                0;
-                
-            SDL_SetWindowFullscreen(_window, flags);
-            
-            if (!_isFullscreen)
+            if (_isFullscreen)
             {
-                // When returning from fullscreen, we need to restore the window size
-                SDL_SetWindowSize(_window, _windowWidth, _windowHeight);
+                // Get the current display mode
+                SDL_DisplayMode displayMode;
+                SDL_GetCurrentDisplayMode(0, out displayMode);
+                
+                // Set window to fullscreen mode
+                SDL_SetWindowDisplayMode(_window, ref displayMode);
+                SDL_SetWindowFullscreen(_window, (uint)SDL_WindowFlags.SDL_WINDOW_FULLSCREEN_DESKTOP);
+            }
+            else
+            {
+                // Set window back to normal mode
+                SDL_DisplayMode displayMode = new SDL_DisplayMode
+                {
+                    w = _windowWidth,
+                    h = _windowHeight,
+                    refresh_rate = 60,
+                    format = SDL_PIXELFORMAT_RGBA8888
+                };
+                
+                SDL_SetWindowDisplayMode(_window, ref displayMode);
+                SDL_SetWindowFullscreen(_window, 0);
+                
+                // Ensure window is centered
                 SDL_SetWindowPosition(_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
             }
             
@@ -1297,14 +1555,18 @@ namespace Catch3K.SDL.Engine
         // Adjust volume
         private void AdjustVolume(float change)
         {
-            _volume = Math.Clamp(_volume + change, 0f, 1f);
+            // Scale the change to be 2.5x smaller (40% = 100%)
+            float scaledChange = change * 0.4f;
+            
+            _volume = Math.Clamp(_volume + scaledChange, 0f, 0.4f);
             
             if (_audioPlayer != null)
             {
-                _audioPlayer.Volume = _volume;
+                // Scale the actual volume to the full range (0-100%)
+                _audioPlayer.Volume = _volume * 2.5f;
             }
             
-            Console.WriteLine($"Volume set to: {_volume * 100:0}%");
+            Console.WriteLine($"Volume set to: {_volume * 250:0}%");
             
             // Show volume notification
             _volumeChangeTime = _currentTime;

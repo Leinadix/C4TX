@@ -59,22 +59,26 @@ When you start the game:
 
 ### Global Controls
 - **F11**: Toggle fullscreen mode
-- **+/-**: Adjust volume up/down
-- **M** or **0**: Toggle mute
 
 ### Menu Controls
 - **Up/Down**: Navigate through available songs or difficulties
 - **Left/Right**: Switch between song selection and difficulty selection modes
 - **Enter**: Start the selected song with the current difficulty
 - **Escape**: Exit the game
+- **+/-**: Adjust volume up/down
+- **M** or **0**: Toggle mute
 
 ### Gameplay Controls
 - **D, F, J, K**: Hit the notes in the 4 columns
 - **P**: Pause/resume the current beatmap
 - **Space**: Restart the current beatmap
 - **Escape**: Return to the song selection menu
-- **F11**: Toggle fullscreen mode (also available in menu and pause screens)
-- **+/-**: Adjust volume (also available in menu and pause screens)
+- **F11**: Toggle fullscreen mode
+
+### Pause Screen Controls
+- **P**: Resume game
+- **Escape**: Return to menu
+- **Space**: Restart song
 
 ## Differences from WPF Version
 
