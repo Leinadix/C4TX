@@ -7,6 +7,11 @@ using SDL2;
 using static SDL2.SDL;
 using System.Text;
 using System.Linq;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using NAudio.Wave.SampleProviders;
+using System.Threading.Tasks;
 
 namespace Catch3K.SDL.Engine
 {
@@ -72,6 +77,27 @@ namespace Catch3K.SDL.Engine
         private SDL_Color _textColor = new SDL_Color() { r = 255, g = 255, b = 255, a = 255 };
         private SDL_Color _comboColor = new SDL_Color() { r = 255, g = 220, b = 100, a = 255 };
         
+        // UI Theme colors
+        private SDL_Color _primaryColor = new SDL_Color() { r = 65, g = 105, b = 225, a = 255 }; // Royal blue
+        private SDL_Color _accentColor = new SDL_Color() { r = 255, g = 140, b = 0, a = 255 }; // Dark orange
+        private SDL_Color _panelBgColor = new SDL_Color() { r = 20, g = 20, b = 40, a = 230 }; // Semi-transparent dark blue
+        private SDL_Color _highlightColor = new SDL_Color() { r = 255, g = 215, b = 0, a = 255 }; // Gold
+        private SDL_Color _mutedTextColor = new SDL_Color() { r = 180, g = 180, b = 190, a = 255 }; // Light gray
+        private SDL_Color _errorColor = new SDL_Color() { r = 220, g = 50, b = 50, a = 255 }; // Red
+        private SDL_Color _successColor = new SDL_Color() { r = 50, g = 205, b = 50, a = 255 }; // Green
+        
+        // UI Animation properties
+        private double _menuAnimationTime = 0;
+        private double _menuTransitionDuration = 500; // 500ms for menu transitions
+        private bool _isMenuTransitioning = false;
+        private GameState _previousState = GameState.Menu;
+        
+        // UI Layout constants
+        private const int PANEL_PADDING = 20;
+        private const int PANEL_BORDER_RADIUS = 10;
+        private const int ITEM_SPACING = 10;
+        private const int PANEL_BORDER_SIZE = 2;
+        
         // Game state tracking
         private List<(HitObject Note, bool Hit)> _activeNotes = new List<(HitObject, bool)>();
         private List<(int Lane, double Time)> _hitEffects = new List<(int, double)>();
@@ -117,6 +143,9 @@ namespace Catch3K.SDL.Engine
         private List<(double NoteTime, double HitTime, double Deviation)> _noteHits = new List<(double, double, double)>();
         private double _songEndTime = 0;
         private bool _hasShownResults = false;
+        
+        private string _previewedBeatmapPath = string.Empty; // Track which beatmap is being previewed
+        private bool _isPreviewPlaying = false; // Track if preview is currently playing
         
         public GameEngine(string? songsDirectory = null)
         {
@@ -357,6 +386,9 @@ namespace Catch3K.SDL.Engine
         {
             try
             {
+                // Stop any existing audio preview
+                StopAudioPreview();
+                
                 // Stop any existing audio playback
                 StopAudio();
                 
@@ -441,63 +473,90 @@ namespace Catch3K.SDL.Engine
         
         private void TryLoadAudio()
         {
-            if (!_audioEnabled || string.IsNullOrEmpty(_currentAudioPath) || !File.Exists(_currentAudioPath))
-            {
-                _audioLoaded = false;
-                return;
-            }
-            
             try
             {
-                // Dispose of previous audio resources
-                if (_audioReader != null)
+                // Check if we have a beatmap and an audio file
+                if (_currentBeatmap == null || string.IsNullOrEmpty(_currentBeatmap.AudioFilename))
                 {
-                    _audioReader.Dispose();
-                    _audioReader = null;
+                    Console.WriteLine("No audio file specified in beatmap");
+                    return;
                 }
                 
-                _audioFile = null;
-                _sampleProvider = null;
-                
-                // Check file extension to determine the audio type
-                string fileExtension = Path.GetExtension(_currentAudioPath).ToLowerInvariant();
-                
-                if (fileExtension == ".ogg")
+                // Get the directory of the beatmap file and find the audio file
+                string? beatmapDir = null;
+                var beatmapInfo = GetSelectedBeatmapInfo();
+                if (beatmapInfo != null)
                 {
-                    // For .ogg files, use VorbisReader
-                    var vorbisReader = new VorbisWaveReader(_currentAudioPath);
-                    _audioReader = vorbisReader;
-                    _audioFile = vorbisReader;
-                    _sampleProvider = vorbisReader.ToSampleProvider();
+                    beatmapDir = Path.GetDirectoryName(beatmapInfo.Path);
+                }
+                
+                if (string.IsNullOrEmpty(beatmapDir))
+                {
+                    Console.WriteLine("Could not determine beatmap directory");
+                    return;
+                }
+                
+                string audioPath = Path.Combine(beatmapDir, _currentBeatmap.AudioFilename);
+                _currentAudioPath = audioPath;
+                
+                if (!File.Exists(audioPath))
+                {
+                    Console.WriteLine($"Audio file not found: {audioPath}");
+                    return;
+                }
+                
+                // Stop any existing audio first
+                StopAudio();
+                
+                // Create audio reader based on file extension
+                string extension = Path.GetExtension(audioPath).ToLower();
+                
+                if (extension == ".mp3")
+                {
+                    _audioReader = new Mp3FileReader(audioPath);
+                    _audioFile = (Mp3FileReader)_audioReader;
+                }
+                else if (extension == ".wav")
+                {
+                    _audioReader = new WaveFileReader(audioPath);
+                    _audioFile = (WaveFileReader)_audioReader;
                 }
                 else
                 {
-                    // For mp3, wav, and other supported formats use the standard AudioFileReader
-                    var audioFileReader = new AudioFileReader(_currentAudioPath);
-                    _audioReader = audioFileReader;
-                    _audioFile = audioFileReader;
-                    _sampleProvider = audioFileReader;
+                    Console.WriteLine($"Unsupported audio format: {extension}");
+                    return;
                 }
                 
-                _audioLoaded = true;
+                // Create a sample provider for volume control
+                _sampleProvider = _audioFile.ToSampleProvider();
+                var volumeProvider = new VolumeSampleProvider(_sampleProvider)
+                {
+                    Volume = _volume
+                };
                 
-                // Ensure audio player is initialized
+                // Initialize the audio player (if needed)
                 if (_audioPlayer == null)
                 {
-                    _audioPlayer = new WaveOutEvent();
-                    _audioPlayer.PlaybackStopped += (s, e) => 
-                    {
-                        Console.WriteLine("Audio playback stopped");
-                    };
+                    InitializeAudioPlayer();
                 }
                 
-                if (_audioPlayer != null && _audioFile != null)
+                // Always start audio reading from the beginning for gameplay
+                if (_audioFile is Mp3FileReader mp3Reader)
                 {
-                    _audioPlayer.Init(_audioFile);
-                    _audioPlayer.Volume = _volume; // Set the volume
+                    mp3Reader.Position = 0;
+                    mp3Reader.CurrentTime = TimeSpan.Zero;
+                }
+                else if (_audioFile is WaveFileReader waveReader)
+                {
+                    waveReader.Position = 0;
+                    waveReader.CurrentTime = TimeSpan.Zero;
                 }
                 
-                Console.WriteLine($"Audio loaded successfully: {Path.GetFileName(_currentAudioPath)}");
+                // Set up the player with our volume provider
+                _audioPlayer?.Init(volumeProvider);
+                _audioLoaded = true;
+                
+                Console.WriteLine($"Audio loaded: {audioPath}");
             }
             catch (Exception ex)
             {
@@ -509,10 +568,39 @@ namespace Catch3K.SDL.Engine
         // Start the game
         public void Start()
         {
+            // Stop any audio preview that might be playing
+            StopAudioPreview();
+            
             if (_currentBeatmap == null)
             {
-                Console.WriteLine("No beatmap loaded");
+                Console.WriteLine("Cannot start: No beatmap loaded");
                 return;
+            }
+            
+            // Reset audio file position to the beginning
+            // This is critical to ensure sync between beatmap and audio
+            if (_audioFile != null)
+            {
+                if (_audioFile is Mp3FileReader mp3Reader)
+                {
+                    // Reset to beginning of file
+                    mp3Reader.Position = 0;
+                    mp3Reader.CurrentTime = TimeSpan.Zero;
+                }
+                else if (_audioFile is WaveFileReader waveReader)
+                {
+                    // Reset to beginning of file
+                    waveReader.Position = 0;
+                    waveReader.CurrentTime = TimeSpan.Zero;
+                }
+            }
+            
+            // Explicitly reload the audio to ensure clean state
+            if (!string.IsNullOrEmpty(_currentAudioPath) && File.Exists(_currentAudioPath))
+            {
+                // Fully reload audio to ensure clean start
+                StopAudio();
+                TryLoadAudio();
             }
             
             // Log the current beatmap ID for debugging
@@ -529,7 +617,13 @@ namespace Catch3K.SDL.Engine
             _noteHits.Clear();
             _hasShownResults = false;
             
-            // Clear all active notes and hit effects
+            // Reset game metrics
+            _score = 0;
+            _combo = 0;
+            _maxCombo = 0;
+            _totalAccuracy = 0;
+            _totalNotes = 0;
+            _currentAccuracy = 0;
             _activeNotes.Clear();
             _hitEffects.Clear();
             
@@ -540,27 +634,25 @@ namespace Catch3K.SDL.Engine
             }
             
             // Set song end time (use the last note's time + 5 seconds)
-            _songEndTime = _currentBeatmap.HitObjects.Max(n => n.StartTime) + 5000;
+            if (_currentBeatmap.HitObjects.Count > 0)
+            {
+                var lastNote = _currentBeatmap.HitObjects.OrderByDescending(n => n.StartTime).First();
+                _songEndTime = lastNote.StartTime + 5000; // Add 5 seconds after the last note
+            }
+            else
+            {
+                _songEndTime = 60000; // Default to 1 minute if no notes
+            }
             
             // Start audio playback with delay
-            if (_audioEnabled && _audioLoaded && _audioPlayer != null && _audioFile != null)
+            if (_audioEnabled && _audioLoaded && _audioPlayer != null)
             {
                 try
                 {
-                    // Reset audio position to beginning
-                    if (_audioReader is AudioFileReader audioFileReader)
-                    {
-                        audioFileReader.Position = 0;
-                    }
-                    else if (_audioReader is VorbisWaveReader vorbisReader)
-                    {
-                        vorbisReader.Position = 0;
-                    }
-                    
                     // Stop any current playback
                     _audioPlayer.Stop();
                     
-                    // Start audio playback after the delay
+                    // Start audio playback after the countdown delay
                     Task.Delay(START_DELAY_MS).ContinueWith(_ => 
                     {
                         _audioPlayer.Play();
@@ -584,6 +676,22 @@ namespace Catch3K.SDL.Engine
             _currentState = GameState.Menu;
             
             Console.WriteLine("Game stopped");
+            
+            // If we have a current beatmap, preview its audio when returning to the menu
+            if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.Id))
+            {
+                // Find the beatmap path from the available beatmaps
+                if (_availableBeatmapSets != null && _selectedSongIndex >= 0 && 
+                    _selectedSongIndex < _availableBeatmapSets.Count &&
+                    _selectedDifficultyIndex >= 0 && 
+                    _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+                {
+                    string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[_selectedDifficultyIndex].Path;
+                    // Delay preview by a short time to allow for transition
+                    _gameTimer.Start(); // Restart the timer for animation
+                    Task.Delay(300).ContinueWith(_ => PreviewBeatmapAudio(beatmapPath));
+                }
+            }
         }
         
         // Pause the game
@@ -617,57 +725,6 @@ namespace Catch3K.SDL.Engine
             {
                 _audioPlayer.Stop();
             }
-        }
-        
-        // Change selected song in menu
-        private void ChangeSong(int direction)
-        {
-            if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0)
-                return;
-                
-            if (_isSelectingDifficulty)
-            {
-                // Change difficulty within current mapset
-                var currentMapset = _availableBeatmapSets[_selectedSongIndex];
-                int totalDifficulties = currentMapset.Beatmaps.Count;
-                
-                if (totalDifficulties > 0)
-                {
-                    _selectedDifficultyIndex = (_selectedDifficultyIndex + direction) % totalDifficulties;
-                    if (_selectedDifficultyIndex < 0) _selectedDifficultyIndex += totalDifficulties;
-                    
-                    // Load the selected difficulty
-                    LoadBeatmap(currentMapset.Beatmaps[_selectedDifficultyIndex].Path);
-                }
-            }
-            else
-            {
-                // Change mapset
-                int totalSets = _availableBeatmapSets.Count;
-                _selectedSongIndex = (_selectedSongIndex + direction) % totalSets;
-                if (_selectedSongIndex < 0) _selectedSongIndex += totalSets;
-                
-                // Reset difficulty index
-                _selectedDifficultyIndex = 0;
-                
-                // Load the selected beatmap
-                if (_availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
-                {
-                    LoadBeatmap(_availableBeatmapSets[_selectedSongIndex].Beatmaps[_selectedDifficultyIndex].Path);
-                }
-            }
-        }
-        
-        // Toggle between selecting mapset and difficulty
-        private void ToggleSelectionMode()
-        {
-            if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0)
-                return;
-                
-            if (_availableBeatmapSets[_selectedSongIndex].Beatmaps.Count <= 1)
-                return; // No need to toggle if there's only one difficulty
-                
-            _isSelectingDifficulty = !_isSelectingDifficulty;
         }
         
         // The main game loop
@@ -894,33 +951,82 @@ namespace Catch3K.SDL.Engine
                     return;
                 }
                 
-                // Menu navigation
-                // Up/Down to change song or difficulty
+                // Menu navigation for new UI layout
                 if (scancode == SDL_Scancode.SDL_SCANCODE_UP)
                 {
-                    ChangeSong(-1);
+                    // Up key moves to previous song
+                    if (_selectedSongIndex > 0)
+                    {
+                        _selectedSongIndex--;
+                        _selectedDifficultyIndex = 0; // Reset difficulty selection
+                        // Load first difficulty of this song
+                        if (_availableBeatmapSets != null && 
+                            _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
+                        {
+                            string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[0].Path;
+                            LoadBeatmap(beatmapPath);
+                            
+                            // Preview the audio for this beatmap
+                            PreviewBeatmapAudio(beatmapPath);
+                        }
+                    }
                 }
                 else if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
                 {
-                    ChangeSong(1);
-                }
-                
-                // Left/Right to toggle between song and difficulty selection
-                else if (scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)
-                {
-                    if (!_isSelectingDifficulty)
+                    // Down key moves to next song
+                    if (_availableBeatmapSets != null && _selectedSongIndex < _availableBeatmapSets.Count - 1)
                     {
-                        ToggleSelectionMode();
+                        _selectedSongIndex++;
+                        _selectedDifficultyIndex = 0; // Reset difficulty selection
+                        // Load first difficulty of this song
+                        if (_availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
+                        {
+                            string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[0].Path;
+                            LoadBeatmap(beatmapPath);
+                            
+                            // Preview the audio for this beatmap
+                            PreviewBeatmapAudio(beatmapPath);
+                        }
                     }
                 }
                 else if (scancode == SDL_Scancode.SDL_SCANCODE_LEFT)
                 {
-                    if (_isSelectingDifficulty)
+                    // Left key selects previous difficulty of current song
+                    if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
+                        _selectedSongIndex < _availableBeatmapSets.Count)
                     {
-                        ToggleSelectionMode();
+                        var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+                        if (_selectedDifficultyIndex > 0)
+                        {
+                            _selectedDifficultyIndex--;
+                            // Load the selected difficulty
+                            string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
+                            LoadBeatmap(beatmapPath);
+                            
+                            // Preview the audio for this beatmap
+                            PreviewBeatmapAudio(beatmapPath);
+                        }
                     }
                 }
-                
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)
+                {
+                    // Right key selects next difficulty of current song
+                    if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
+                        _selectedSongIndex < _availableBeatmapSets.Count)
+                    {
+                        var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+                        if (_selectedDifficultyIndex < currentMapset.Beatmaps.Count - 1)
+                        {
+                            _selectedDifficultyIndex++;
+                            // Load the selected difficulty
+                            string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
+                            LoadBeatmap(beatmapPath);
+                            
+                            // Preview the audio for this beatmap
+                            PreviewBeatmapAudio(beatmapPath);
+                        }
+                    }
+                }
                 // Enter to start the game
                 else if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
                 {
@@ -1061,6 +1167,7 @@ namespace Catch3K.SDL.Engine
                 // Check if song has ended
                 if (_currentBeatmap != null && _currentTime >= _songEndTime && !_hasShownResults)
                 {
+                    _previousState = _currentState;
                     _currentState = GameState.Results;
                     _hasShownResults = true;
                     
@@ -1146,6 +1253,84 @@ namespace Catch3K.SDL.Engine
                     }
                 }
             }
+            else if (_currentState == GameState.Menu)
+            {
+                // Always update timer for menu animations even when not playing
+                if (!_gameTimer.IsRunning)
+                {
+                    _gameTimer.Start();
+                }
+                
+                // Handle state transitions
+                if (_previousState != _currentState)
+                {
+                    _isMenuTransitioning = true;
+                    _menuAnimationTime = 0;
+                    _previousState = _currentState;
+                }
+                
+                // Update transition animation time
+                if (_isMenuTransitioning)
+                {
+                    _menuAnimationTime += _gameTimer.ElapsedMilliseconds;
+                    if (_menuAnimationTime >= _menuTransitionDuration)
+                    {
+                        _isMenuTransitioning = false;
+                    }
+                }
+                
+                // Hide volume indicator after 2 seconds
+                if (_showVolumeIndicator && _gameTimer.ElapsedMilliseconds - _volumeChangeTime > 2000)
+                {
+                    _showVolumeIndicator = false;
+                }
+            }
+            else if (_currentState == GameState.Results)
+            {
+                // Keep timer running for animations in results screen
+                if (!_gameTimer.IsRunning)
+                {
+                    _gameTimer.Start();
+                }
+                
+                // Handle transition animation
+                if (_previousState != _currentState)
+                {
+                    _isMenuTransitioning = true;
+                    _menuAnimationTime = 0;
+                    _previousState = _currentState;
+                }
+                
+                if (_isMenuTransitioning)
+                {
+                    _menuAnimationTime += _gameTimer.ElapsedMilliseconds;
+                    if (_menuAnimationTime >= _menuTransitionDuration)
+                    {
+                        _isMenuTransitioning = false;
+                    }
+                }
+            }
+            
+            // Add preview handling for menu state transitions
+            if (_currentState == GameState.Menu && _previousState != GameState.Menu)
+            {
+                // When transitioning back to menu, start the preview if we have a selected beatmap
+                if (_availableBeatmapSets != null && _selectedSongIndex >= 0 && 
+                    _selectedSongIndex < _availableBeatmapSets.Count &&
+                    _selectedDifficultyIndex >= 0 && 
+                    _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+                {
+                    string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[_selectedDifficultyIndex].Path;
+                    // Only preview if not already playing
+                    if (!_isPreviewPlaying)
+                    {
+                        PreviewBeatmapAudio(beatmapPath);
+                    }
+                }
+            }
+            
+            // Update previous state
+            _previousState = _currentState;
         }
         
         private void Render()
@@ -1179,182 +1364,22 @@ namespace Catch3K.SDL.Engine
         
         private void RenderMenu()
         {
-            // Draw title
-            RenderText("Catch3K SDL", _windowWidth / 2, 50, _textColor, true, true);
-            RenderText("4K Rhythm Game", _windowWidth / 2, 90, _textColor, false, true);
+            // Update animation time for animated effects
+            _menuAnimationTime += _gameTimer.ElapsedMilliseconds;
             
-            // Draw username field
-            SDL_Color usernameColor = _isEditingUsername ? new SDL_Color() { r = 255, g = 255, b = 100, a = 255 } : _textColor;
-            string usernameDisplay = _isEditingUsername ? $"Username: {_username}_" : $"Username: {_username}";
-            string usernameStatus = string.IsNullOrWhiteSpace(_username) ? "(Required)" : "";
+            // Draw animated background
+            DrawMenuBackground();
             
-            RenderText(usernameDisplay, _windowWidth / 2, 130, usernameColor, false, true);
-            if (_isEditingUsername)
-            {
-                RenderText("Press Enter to confirm", _windowWidth / 2, 150, _textColor, false, true);
-            }
-            else if (string.IsNullOrWhiteSpace(_username))
-            {
-                RenderText("Press U to set username " + usernameStatus, _windowWidth / 2, 150, _textColor, false, true);
-            }
+            // Draw header with game title
+            DrawHeader("Catch3K", "4K Rhythm Game");
             
-            // Draw instructions - replace Unicode arrows with ASCII alternatives
-            RenderText("Up/Down: Navigate Songs/Difficulties", _windowWidth / 2, _windowHeight - 180, _textColor, false, true);
-            RenderText("Left/Right: Switch between Songs and Difficulties", _windowWidth / 2, _windowHeight - 150, _textColor, false, true);
-            RenderText("Enter: Start Game", _windowWidth / 2, _windowHeight - 120, _textColor, false, true);
-            RenderText("F11: Toggle Fullscreen", _windowWidth / 2, _windowHeight - 90, _textColor, false, true);
-            RenderText("+/-: Adjust Volume, M: Mute", _windowWidth / 2, _windowHeight - 60, _textColor, false, true);
-            RenderText("Esc: Exit", _windowWidth / 2, _windowHeight - 30, _textColor, false, true);
+            // Draw main menu content in a panel
+            DrawMainMenuPanel();
             
-            // Draw song list
-            if (_availableBeatmapSets != null && _availableBeatmapSets.Count > 0)
+            // Draw volume indicator if needed
+            if (_showVolumeIndicator)
             {
-                int songListY = 180; // Moved down to accommodate username field
-                int visibleSongs = 5;
-                
-                if (!_isSelectingDifficulty)
-                {
-                    // Displaying song list (mapsets)
-                    int startIndex = Math.Max(0, _selectedSongIndex - visibleSongs / 2);
-                    
-                    RenderText("Song Selection:", 50, songListY - 30, _textColor);
-                    
-                    for (int i = startIndex; i < Math.Min(_availableBeatmapSets.Count, startIndex + visibleSongs); i++)
-                    {
-                        var beatmapSet = _availableBeatmapSets[i];
-                        bool isSelected = i == _selectedSongIndex;
-                        
-                        SDL_Color color = isSelected ? _comboColor : _textColor;
-                        string prefix = isSelected ? "> " : "  ";
-                        
-                        string songName = $"{prefix}{beatmapSet.Artist} - {beatmapSet.Title}";
-                        RenderText(songName, 50, songListY + ((i - startIndex) * 30), color);
-                        
-                        // Show difficulty count
-                        if (isSelected)
-                        {
-                            string diffCount = $"{beatmapSet.Beatmaps.Count} difficulties";
-                            RenderText(diffCount, 600, songListY + ((i - startIndex) * 30), _textColor);
-                        }
-                    }
-                }
-                else
-                {
-                    // Displaying difficulty list for selected mapset
-                    var currentMapset = _availableBeatmapSets[_selectedSongIndex];
-                    
-                    // Show mapset info
-                    string mapsetTitle = $"{currentMapset.Artist} - {currentMapset.Title}";
-                    RenderText(mapsetTitle, 50, songListY - 30, _textColor);
-                    
-                    if (currentMapset.Beatmaps.Count > 0)
-                    {
-                        int startIndex = Math.Max(0, _selectedDifficultyIndex - visibleSongs / 2);
-                        
-                        // Show difficulty selection header
-                        RenderText("Difficulty Selection:", 50, songListY, _textColor);
-                        
-                        for (int i = startIndex; i < Math.Min(currentMapset.Beatmaps.Count, startIndex + visibleSongs); i++)
-                        {
-                            var beatmap = currentMapset.Beatmaps[i];
-                            bool isSelected = i == _selectedDifficultyIndex;
-                            
-                            SDL_Color color = isSelected ? _comboColor : _textColor;
-                            string prefix = isSelected ? "> " : "  ";
-                            
-                            // Use the Difficulty property from BeatmapInfo
-                            string diffName = $"{prefix}{beatmap.Difficulty}";
-                            RenderText(diffName, 70, songListY + 30 + ((i - startIndex) * 30), color);
-                            
-                            // Show beatmap information
-                            if (isSelected)
-                            {
-                                // We don't have hit objects count in BeatmapInfo
-                                // Get information from the path instead
-                                string fileName = Path.GetFileName(beatmap.Path);
-                                string diffInfo = $"File: {fileName}";
-                                RenderText(diffInfo, 600, songListY + 30 + ((i - startIndex) * 30), _textColor);
-                                
-                                // Show previous scores if the username is set
-                                if (!string.IsNullOrWhiteSpace(_username))
-                                {
-                                    RenderPreviousScores(beatmap.Id, songListY + 90 + ((i - startIndex) * 30));
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        RenderText("No difficulties found in this mapset", _windowWidth / 2, songListY + 50, _textColor, false, true);
-                    }
-                }
-            }
-            else
-            {
-                RenderText("No beatmaps found", _windowWidth / 2, 200, _textColor, false, true);
-                RenderText("Please place beatmaps in the Songs directory", _windowWidth / 2, 230, _textColor, false, true);
-            }
-        }
-        
-        // New method to render previous scores for a beatmap
-        private void RenderPreviousScores(string beatmapId, int startY)
-        {
-            try
-            {
-                // Get the map hash for the selected beatmap
-                string mapHash = GetCurrentMapHash();
-                
-                if (string.IsNullOrEmpty(mapHash))
-                {
-                    RenderText("Cannot load scores: Map hash unavailable", 50, startY, _textColor);
-                    return;
-                }
-                
-                // Get scores for this beatmap using the hash
-                var scores = _scoreService.GetBeatmapScoresByHash(_username, mapHash);
-                
-                if (scores.Count == 0)
-                {
-                    RenderText("No previous plays", 50, startY, _textColor);
-                    return;
-                }
-                
-                // Display "previous plays" header
-                RenderText("Previous Plays:", 50, startY, _textColor);
-                
-                // Display up to 3 most recent scores
-                int displayCount = Math.Min(scores.Count, 3);
-                for (int i = 0; i < displayCount; i++)
-                {
-                    var score = scores[i];
-                    string date = score.DatePlayed.ToString("yyyy-MM-dd HH:mm");
-                    
-                    // Display score info
-                    string scoreInfo = $"{date} - Score: {score.Score:N0} - Acc: {score.Accuracy:P2} - Combo: {score.MaxCombo}x";
-                    
-                    SDL_Color scoreColor = new SDL_Color();
-                    if (i == 0)
-                    {
-                        // Highlight best score with gold
-                        scoreColor = new SDL_Color() { r = 255, g = 215, b = 0, a = 255 };
-                    }
-                    else if (i == 1)
-                    {
-                        // Silver for second best
-                        scoreColor = new SDL_Color() { r = 192, g = 192, b = 192, a = 255 };
-                    }
-                    else
-                    {
-                        // Bronze for third
-                        scoreColor = new SDL_Color() { r = 205, g = 127, b = 50, a = 255 };
-                    }
-                    
-                    RenderText(scoreInfo, 70, startY + 30 + (i * 30), scoreColor);
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error rendering previous scores: {ex.Message}");
+                RenderVolumeIndicator();
             }
         }
         
@@ -1561,37 +1586,34 @@ namespace Catch3K.SDL.Engine
         
         private void RenderVolumeIndicator()
         {
-            // Draw a semi-transparent background
-            SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(_renderer, 0, 0, 0, 150);
-            
+            // Calculate position for a centered floating panel
             int indicatorWidth = 300;
-            int indicatorHeight = 40;
+            int indicatorHeight = 100;
             int x = (_windowWidth - indicatorWidth) / 2;
-            int y = _windowHeight / 4;
+            int y = _windowHeight / 5;
             
-            SDL_Rect bgRect = new SDL_Rect
-            {
-                x = x,
-                y = y,
-                w = indicatorWidth,
-                h = indicatorHeight
-            };
+            // Draw background panel with fade effect
+            byte alpha = (byte)(200 * (1.0 - Math.Min(1.0, ((_gameTimer.ElapsedMilliseconds - _volumeChangeTime) / 2000.0))));
+            SDL_Color panelBg = _panelBgColor;
+            panelBg.a = alpha;
             
-            SDL_RenderFillRect(_renderer, ref bgRect);
+            DrawPanel(x, y, indicatorWidth, indicatorHeight, panelBg, _primaryColor);
             
-            // Draw volume text (show as percentage of full range)
+            // Draw volume text
             string volumeText = _volume <= 0 ? "Volume: Muted" : $"Volume: {_volume * 250:0}%";
-            RenderText(volumeText, _windowWidth / 2, y + 20, _textColor, false, true);
+            SDL_Color textColor = _textColor;
+            textColor.a = alpha;
+            RenderText(volumeText, _windowWidth / 2, y + 30, textColor, false, true);
             
-            // Draw volume bar
+            // Draw volume bar background
             int barWidth = indicatorWidth - 40;
             int barHeight = 10;
             int barX = x + 20;
-            int barY = y + indicatorHeight + 10;
+            int barY = y + 60;
             
-            // Background bar
-            SDL_SetRenderDrawColor(_renderer, 100, 100, 100, 200);
+            SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(_renderer, 50, 50, 50, alpha);
+            
             SDL_Rect barBgRect = new SDL_Rect
             {
                 x = barX,
@@ -1599,18 +1621,47 @@ namespace Catch3K.SDL.Engine
                 w = barWidth,
                 h = barHeight
             };
+            
             SDL_RenderFillRect(_renderer, ref barBgRect);
             
-            // Volume level bar (show as percentage of full range)
-            SDL_SetRenderDrawColor(_renderer, 50, 200, 50, 255);
-            SDL_Rect barLevelRect = new SDL_Rect
+            // Draw volume level
+            int filledWidth = (int)(barWidth * _volume);
+            
+            // Choose color based on volume level
+            SDL_Color volumeColor;
+            if (_volume <= 0)
+            {
+                // Muted - red
+                volumeColor = _errorColor;
+            }
+            else if (_volume < 0.3f)
+            {
+                // Low - blue
+                volumeColor = _primaryColor;
+            }
+            else if (_volume < 0.7f)
+            {
+                // Medium - green
+                volumeColor = _successColor;
+            }
+            else
+            {
+                // High - orange
+                volumeColor = _accentColor;
+            }
+            
+            volumeColor.a = alpha;
+            SDL_SetRenderDrawColor(_renderer, volumeColor.r, volumeColor.g, volumeColor.b, volumeColor.a);
+            
+            SDL_Rect barFillRect = new SDL_Rect
             {
                 x = barX,
                 y = barY,
-                w = (int)(barWidth * (_volume * 2.5f)),
+                w = filledWidth,
                 h = barHeight
             };
-            SDL_RenderFillRect(_renderer, ref barLevelRect);
+            
+            SDL_RenderFillRect(_renderer, ref barFillRect);
         }
         
         private void RenderResults()
@@ -2058,6 +2109,814 @@ namespace Catch3K.SDL.Engine
             // Quit SDL subsystems
             SDL_ttf.TTF_Quit();
             SDL_Quit();
+        }
+        
+        // Add methods to support UI drawing
+        
+        // Draw a rounded rectangle (panel)
+        private void DrawPanel(int x, int y, int width, int height, SDL_Color bgColor, SDL_Color borderColor, int borderSize = PANEL_BORDER_SIZE)
+        {
+            // Draw filled background
+            SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor(_renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
+            
+            SDL_Rect panelRect = new SDL_Rect
+            {
+                x = x,
+                y = y,
+                w = width,
+                h = height
+            };
+            
+            SDL_RenderFillRect(_renderer, ref panelRect);
+            
+            // Draw border (simplified version without actual rounding)
+            if (borderSize > 0)
+            {
+                SDL_SetRenderDrawColor(_renderer, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
+                
+                // Top border
+                SDL_Rect topBorder = new SDL_Rect { x = x, y = y, w = width, h = borderSize };
+                SDL_RenderFillRect(_renderer, ref topBorder);
+                
+                // Bottom border
+                SDL_Rect bottomBorder = new SDL_Rect { x = x, y = y + height - borderSize, w = width, h = borderSize };
+                SDL_RenderFillRect(_renderer, ref bottomBorder);
+                
+                // Left border
+                SDL_Rect leftBorder = new SDL_Rect { x = x, y = y + borderSize, w = borderSize, h = height - 2 * borderSize };
+                SDL_RenderFillRect(_renderer, ref leftBorder);
+                
+                // Right border
+                SDL_Rect rightBorder = new SDL_Rect { x = x + width - borderSize, y = y + borderSize, w = borderSize, h = height - 2 * borderSize };
+                SDL_RenderFillRect(_renderer, ref rightBorder);
+            }
+        }
+        
+        // Draw a button
+        private void DrawButton(string text, int x, int y, int width, int height, SDL_Color bgColor, SDL_Color textColor, bool centered = true, bool isSelected = false)
+        {
+            // Draw button background with highlight if selected
+            SDL_Color borderColor = isSelected ? _highlightColor : bgColor;
+            DrawPanel(x, y, width, height, bgColor, borderColor, isSelected ? 3 : 1);
+            
+            // Draw text
+            int textY = y + (height / 2);
+            int textX = centered ? x + (width / 2) : x + PANEL_PADDING;
+            RenderText(text, textX, textY, textColor, false, centered);
+        }
+        
+        // Draw a gradient background for the menu
+        private void DrawMenuBackground()
+        {
+            // Calculate gradient based on animation time to slowly shift colors
+            double timeOffset = (_menuAnimationTime / 10000.0) % 1.0;
+            byte colorPulse = (byte)(155 + Math.Sin(timeOffset * Math.PI * 2) * 30);
+            
+            // Top gradient color - dark blue
+            SDL_Color topColor = new SDL_Color() { r = 15, g = 15, b = 35, a = 255 };
+            // Bottom gradient color - slightly lighter with pulse
+            SDL_Color bottomColor = new SDL_Color() { r = 30, g = 30, b = colorPulse, a = 255 };
+            
+            // Draw gradient by rendering a series of horizontal lines
+            int steps = 20;
+            int stepHeight = _windowHeight / steps;
+            
+            for (int i = 0; i < steps; i++)
+            {
+                double ratio = (double)i / steps;
+                
+                // Linear interpolation between colors
+                byte r = (byte)(topColor.r + (bottomColor.r - topColor.r) * ratio);
+                byte g = (byte)(topColor.g + (bottomColor.g - topColor.g) * ratio);
+                byte b = (byte)(topColor.b + (bottomColor.b - topColor.b) * ratio);
+                
+                SDL_SetRenderDrawColor(_renderer, r, g, b, 255);
+                
+                SDL_Rect rect = new SDL_Rect
+                {
+                    x = 0,
+                    y = i * stepHeight,
+                    w = _windowWidth,
+                    h = stepHeight + 1 // +1 to avoid any gaps
+                };
+                
+                SDL_RenderFillRect(_renderer, ref rect);
+            }
+            
+            // Optional: Add some animated particles or stars for extra visual appeal
+            DrawBackgroundParticles();
+        }
+        
+        // Draw animated background particles/stars
+        private void DrawBackgroundParticles()
+        {
+            // Use animation time to make particles move
+            int numParticles = 30;
+            double particleSpeed = 0.05;
+            int maxParticleSize = 3;
+            
+            SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 150);
+            
+            // Use a deterministic pattern based on animation time
+            Random random = new Random(42); // Fixed seed for deterministic pattern
+            for (int i = 0; i < numParticles; i++)
+            {
+                // Determine particle position
+                double baseX = random.NextDouble() * _windowWidth;
+                double baseY = random.NextDouble() * _windowHeight;
+                
+                // Make particles move based on time
+                double offset = (_menuAnimationTime * particleSpeed + i * 100) % 1000 / 1000.0;
+                double x = (baseX + offset * 100) % _windowWidth;
+                double y = (baseY + offset * 50) % _windowHeight;
+                
+                // Size varies by position
+                int size = (int)(maxParticleSize * (0.5 + 0.5 * Math.Sin(offset * Math.PI * 2)));
+                
+                // Draw particle
+                SDL_Rect rect = new SDL_Rect
+                {
+                    x = (int)x,
+                    y = (int)y,
+                    w = size,
+                    h = size
+                };
+                
+                SDL_RenderFillRect(_renderer, ref rect);
+            }
+        }
+        
+        // Draw a header with title and subtitle
+        private void DrawHeader(string title, string subtitle)
+        {
+            // Draw game logo/title
+            RenderText(title, _windowWidth / 2, 50, _accentColor, true, true);
+            
+            // Draw subtitle
+            RenderText(subtitle, _windowWidth / 2, 90, _mutedTextColor, false, true);
+            
+            // Draw a horizontal separator line
+            SDL_SetRenderDrawColor(_renderer, _primaryColor.r, _primaryColor.g, _primaryColor.b, 150);
+            SDL_Rect separatorLine = new SDL_Rect
+            {
+                x = _windowWidth / 4,
+                y = 110,
+                w = _windowWidth / 2,
+                h = 2
+            };
+            SDL_RenderFillRect(_renderer, ref separatorLine);
+        }
+        
+        // Draw the main menu panel and content
+        private void DrawMainMenuPanel()
+        {
+            int panelWidth = _windowWidth * 3 / 4;
+            int panelHeight = _windowHeight - 200;
+            int panelX = (_windowWidth - panelWidth) / 2;
+            int panelY = 130;
+            
+            // Draw main panel
+            DrawPanel(panelX, panelY, panelWidth, panelHeight, _panelBgColor, _primaryColor);
+            
+            // Draw username section at the top of the panel
+            DrawUsernameSection(panelX + PANEL_PADDING, panelY + PANEL_PADDING, 
+                panelWidth - (2 * PANEL_PADDING));
+            
+            // Draw song selection with new UI layout
+            if (_availableBeatmapSets != null && _availableBeatmapSets.Count > 0)
+            {
+                int contentY = panelY + 80; // Start below username section
+                int contentHeight = panelHeight - 140; // Leave space for instructions
+                
+                // Draw song selection with new layout
+                DrawSongSelectionNewLayout(panelX + PANEL_PADDING, contentY, 
+                    panelWidth - (2 * PANEL_PADDING), contentHeight);
+            }
+            else
+            {
+                // No songs found message
+                RenderText("No beatmaps found", _windowWidth / 2, panelY + 150, _errorColor, false, true);
+                RenderText("Place beatmaps in the Songs directory", _windowWidth / 2, panelY + 180, _mutedTextColor, false, true);
+            }
+            
+            // Draw instruction panel at the bottom
+            DrawInstructionPanel(panelX, panelY + panelHeight + 10, panelWidth, 50);
+        }
+        
+        // New method for song selection with improved layout
+        private void DrawSongSelectionNewLayout(int x, int y, int width, int height)
+        {
+            if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0)
+                return;
+            
+            // Split the area into left panel (songs list) and right panel (details)
+            int leftPanelWidth = width / 2;
+            int rightPanelWidth = width - leftPanelWidth - PANEL_PADDING;
+            int rightPanelX = x + leftPanelWidth + PANEL_PADDING;
+            
+            // Draw left panel - song list with difficulties
+            DrawSongListPanel(x, y, leftPanelWidth, height);
+            
+            // Draw top right panel - song details
+            int detailsPanelHeight = height / 2 - PANEL_PADDING / 2;
+            DrawSongDetailsPanel(rightPanelX, y, rightPanelWidth, detailsPanelHeight);
+            
+            // Draw bottom right panel - scores
+            int scoresPanelY = y + detailsPanelHeight + PANEL_PADDING;
+            int scoresPanelHeight = height - detailsPanelHeight - PANEL_PADDING;
+            DrawScoresPanel(rightPanelX, scoresPanelY, rightPanelWidth, scoresPanelHeight);
+        }
+        
+        // Draw the song list with difficulties stacked vertically
+        private void DrawSongListPanel(int x, int y, int width, int height)
+        {
+            // Title
+            RenderText("Song Selection", x + width/2, y, _primaryColor, true, true);
+            
+            // Draw panel for songs list
+            DrawPanel(x, y + 20, width, height - 20, new SDL_Color { r = 25, g = 25, b = 45, a = 255 }, _panelBgColor, 0);
+            
+            if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0)
+                return;
+            
+            // Calculate viewable items
+            int itemHeight = 50; // Base height for a song
+            int difficultyHeight = 30; // Height for each difficulty
+            
+            // Track expanded state and total height required
+            int totalContentHeight = 0;
+            Dictionary<int, bool> songExpanded = new Dictionary<int, bool>();
+            
+            // Calculate if songs are expanded based on selection
+            for (int i = 0; i < _availableBeatmapSets.Count; i++)
+            {
+                bool isExpanded = (i == _selectedSongIndex);
+                songExpanded[i] = isExpanded;
+                
+                totalContentHeight += itemHeight;
+                if (isExpanded)
+                {
+                    totalContentHeight += _availableBeatmapSets[i].Beatmaps.Count * difficultyHeight;
+                }
+            }
+            
+            // Calculate scroll position to keep selected song in view
+            int contentViewHeight = height - 40; // Height of viewable area
+            int maxScroll = Math.Max(0, totalContentHeight - contentViewHeight);
+            
+            // Simple auto-scroll logic to keep selected song in view
+            int currentPos = 0;
+            int selectedSongPos = 0;
+            
+            for (int i = 0; i < _selectedSongIndex; i++)
+            {
+                currentPos += itemHeight;
+                if (songExpanded[i])
+                {
+                    currentPos += _availableBeatmapSets[i].Beatmaps.Count * difficultyHeight;
+                }
+            }
+            selectedSongPos = currentPos;
+            
+            // Calculate scroll offset to center the selected song
+            int scrollOffset = Math.Min(maxScroll, Math.Max(0, selectedSongPos - contentViewHeight / 2));
+            
+            // Draw songs with scrolling
+            int currentY = y + 25 - scrollOffset;
+            
+            for (int i = 0; i < _availableBeatmapSets.Count; i++)
+            {
+                var beatmapSet = _availableBeatmapSets[i];
+                bool isSelected = i == _selectedSongIndex;
+                
+                // Skip if completely out of view
+                if (currentY + itemHeight < y + 25 || currentY > y + height - 15)
+                {
+                    // Update position even if not drawing
+                    currentY += itemHeight;
+                    if (songExpanded[i])
+                    {
+                        currentY += beatmapSet.Beatmaps.Count * difficultyHeight;
+                    }
+                    continue;
+                }
+                
+                // Draw song item
+                SDL_Color songBgColor = isSelected ? _primaryColor : _panelBgColor;
+                SDL_Color textColor = isSelected ? _textColor : _mutedTextColor;
+                
+                // Calculate proper panel height and text position for better alignment
+                int actualItemHeight = itemHeight - 5;
+                DrawPanel(x + 5, currentY, width - 10, actualItemHeight, songBgColor, isSelected ? _accentColor : _panelBgColor, isSelected ? 2 : 0);
+                
+                // Truncate text if too long for the panel
+                string songTitle = $"{beatmapSet.Artist} - {beatmapSet.Title}";
+                if (songTitle.Length > 30) songTitle = songTitle.Substring(0, 28) + "...";
+                
+                // Move text up by 3px from center for better visual alignment
+                RenderText(songTitle, x + 20, currentY + actualItemHeight/2 - 3, textColor, false, false);
+                
+                // Draw expansion indicator with same adjustment
+                string expandSymbol = songExpanded[i] ? "▼" : "▶";
+                RenderText(expandSymbol, x + width - 20, currentY + actualItemHeight/2 - 3, textColor, false, true);
+                
+                currentY += itemHeight;
+                
+                // Draw difficulties if expanded
+                if (songExpanded[i])
+                {
+                    for (int j = 0; j < beatmapSet.Beatmaps.Count; j++)
+                    {
+                        var beatmap = beatmapSet.Beatmaps[j];
+                        bool isDiffSelected = isSelected && j == _selectedDifficultyIndex;
+                        
+                        // Skip if out of view
+                        if (currentY + difficultyHeight < y + 25 || currentY > y + height - 15)
+                        {
+                            currentY += difficultyHeight;
+                            continue;
+                        }
+                        
+                        // Draw difficulty item
+                        SDL_Color diffBgColor = isDiffSelected ? _accentColor : new SDL_Color { r = 40, g = 40, b = 70, a = 255 };
+                        SDL_Color diffTextColor = isDiffSelected ? _textColor : _mutedTextColor;
+                        
+                        // Calculate proper panel height and text position for better alignment
+                        int actualPanelHeight = difficultyHeight - 5;
+                        DrawPanel(x + 35, currentY, width - 40, actualPanelHeight, diffBgColor, isDiffSelected ? _highlightColor : diffBgColor, isDiffSelected ? 2 : 0);
+                        
+                        // Display difficulty name - center within the actual panel height
+                        string diffName = beatmap.Difficulty;
+                        if (diffName.Length > 25) diffName = diffName.Substring(0, 23) + "...";
+                        
+                        // Move text up by 3px from center for better visual alignment
+                        RenderText(diffName, x + 50, currentY + actualPanelHeight/2 - 3, diffTextColor, false, false);
+                        
+                        currentY += difficultyHeight;
+                    }
+                }
+            }
+            
+            // Draw scroll indicators if needed
+            if (scrollOffset > 0)
+            {
+                RenderText("▲", x + width/2, y + 35, _accentColor, false, true);
+            }
+            
+            if (scrollOffset < maxScroll)
+            {
+                RenderText("▼", x + width/2, y + height - 15, _accentColor, false, true);
+            }
+        }
+        
+        // Draw the song details panel
+        private void DrawSongDetailsPanel(int x, int y, int width, int height)
+        {
+            DrawPanel(x, y, width, height, new SDL_Color { r = 25, g = 25, b = 45, a = 255 }, _primaryColor);
+            
+            if (_availableBeatmapSets == null || _selectedSongIndex >= _availableBeatmapSets.Count)
+            {
+                RenderText("No song selected", x + width/2, y + height/2, _mutedTextColor, false, true);
+                return;
+            }
+            
+            var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+            
+            if (_selectedDifficultyIndex >= currentMapset.Beatmaps.Count)
+                return;
+                
+            var currentBeatmap = currentMapset.Beatmaps[_selectedDifficultyIndex];
+            
+            // Draw song info
+            int textX = x + PANEL_PADDING;
+            int textY = y + PANEL_PADDING;
+            
+            // Title
+            RenderText("Song Information", x + width/2, textY, _highlightColor, true, true);
+            textY += 30;
+            
+            // Artist and Title
+            RenderText($"Artist: {currentMapset.Artist}", textX, textY, _textColor);
+            textY += 25;
+            
+            RenderText($"Title: {currentMapset.Title}", textX, textY, _textColor);
+            textY += 25;
+            
+            // Difficulty info
+            RenderText($"Difficulty: {currentBeatmap.Difficulty}", textX, textY, _textColor);
+            textY += 25;
+            
+            // Additional info if available
+            if (_currentBeatmap != null)
+            {
+                // BPM is not available in the Beatmap class, so just show note count
+                RenderText($"Notes: {_currentBeatmap.HitObjects.Count}", textX, textY, _textColor);
+                textY += 25;
+                
+                // Show additional info
+                RenderText($"Length: {TimeSpan.FromMilliseconds(_currentBeatmap.Length):mm\\:ss}", textX, textY, _textColor);
+            }
+            
+            // Play instruction
+            RenderText("Press ENTER to play", x + width/2, y + height - PANEL_PADDING, _accentColor, false, true);
+        }
+        
+        // Draw the scores panel
+        private void DrawScoresPanel(int x, int y, int width, int height)
+        {
+            DrawPanel(x, y, width, height, new SDL_Color { r = 25, g = 25, b = 45, a = 255 }, _primaryColor);
+            
+            // Title
+            RenderText("Previous Scores", x + width/2, y + PANEL_PADDING, _highlightColor, true, true);
+            
+            if (string.IsNullOrWhiteSpace(_username))
+            {
+                RenderText("Set username to view scores", x + width/2, y + height/2, _mutedTextColor, false, true);
+                return;
+            }
+            
+            if (_availableBeatmapSets == null || _selectedSongIndex >= _availableBeatmapSets.Count)
+                return;
+            
+            var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+            
+            if (_selectedDifficultyIndex >= currentMapset.Beatmaps.Count)
+                return;
+                
+            var currentBeatmap = currentMapset.Beatmaps[_selectedDifficultyIndex];
+            
+            try
+            {
+                // Get the map hash for the selected beatmap
+                string mapHash = string.Empty;
+                
+                if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.MapHash))
+                {
+                    mapHash = _currentBeatmap.MapHash;
+                }
+                else
+                {
+                    // Calculate hash if needed
+                    mapHash = _beatmapService.CalculateBeatmapHash(currentBeatmap.Path);
+                }
+                
+                if (string.IsNullOrEmpty(mapHash))
+                {
+                    RenderText("Cannot load scores: Map hash unavailable", x + width/2, y + height/2, _mutedTextColor, false, true);
+                    return;
+                }
+                
+                // Get scores for this beatmap using the hash
+                var scores = _scoreService.GetBeatmapScoresByHash(_username, mapHash);
+                
+                // Sort scores by accuracy (highest first)
+                scores = scores.OrderByDescending(s => s.Accuracy).ToList();
+                
+                if (scores.Count == 0)
+                {
+                    RenderText("No previous plays", x + width/2, y + height/2, _mutedTextColor, false, true);
+                    return;
+                }
+                
+                // Header row
+                int headerY = y + PANEL_PADDING + 30;
+                int columnSpacing = width / 5;
+                
+                RenderText("Date", x + PANEL_PADDING, headerY, _primaryColor, false, false);
+                RenderText("Score", x + PANEL_PADDING + columnSpacing, headerY, _primaryColor, false, false);
+                RenderText("Accuracy", x + PANEL_PADDING + columnSpacing * 2, headerY, _primaryColor, false, false);
+                RenderText("Combo", x + PANEL_PADDING + columnSpacing * 3, headerY, _primaryColor, false, false);
+                
+                // Draw scores table
+                int scoreY = headerY + 25;
+                int rowHeight = 25;
+                int maxScores = Math.Min(scores.Count, (height - 100) / rowHeight);
+                
+                // Draw table separator
+                SDL_SetRenderDrawColor(_renderer, _mutedTextColor.r, _mutedTextColor.g, _mutedTextColor.b, 100);
+                SDL_Rect separator = new SDL_Rect { x = x + PANEL_PADDING, y = headerY + 15, w = width - PANEL_PADDING * 2, h = 1 };
+                SDL_RenderFillRect(_renderer, ref separator);
+                
+                for (int i = 0; i < maxScores; i++)
+                {
+                    var score = scores[i];
+                    
+                    // Choose row color
+                    SDL_Color rowColor;
+                    if (i == 0)
+                        rowColor = _highlightColor; // Gold for best
+                    else if (i == 1)
+                        rowColor = new SDL_Color { r = 192, g = 192, b = 192, a = 255 }; // Silver for second best
+                    else if (i == 2)
+                        rowColor = new SDL_Color { r = 205, g = 127, b = 50, a = 255 }; // Bronze for third
+                    else
+                        rowColor = _textColor;
+                    
+                    // Format data
+                    string date = score.DatePlayed.ToString("yyyy-MM-dd");
+                    string scoreText = score.Score.ToString("N0");
+                    string accuracy = score.Accuracy.ToString("P2");
+                    string combo = $"{score.MaxCombo}x";
+                    
+                    // Draw row
+                    RenderText(date, x + PANEL_PADDING, scoreY, rowColor, false, false);
+                    RenderText(scoreText, x + PANEL_PADDING + columnSpacing, scoreY, rowColor, false, false);
+                    RenderText(accuracy, x + PANEL_PADDING + columnSpacing * 2, scoreY, rowColor, false, false);
+                    RenderText(combo, x + PANEL_PADDING + columnSpacing * 3, scoreY, rowColor, false, false);
+                    
+                    scoreY += rowHeight;
+                }
+            }
+            catch (Exception ex)
+            {
+                RenderText($"Error: {ex.Message}", x + width/2, y + height/2, _errorColor, false, true);
+            }
+        }
+        
+        // Draw username section in the menu
+        private void DrawUsernameSection(int x, int y, int width)
+        {
+            // Draw username panel
+            SDL_Color panelColor = new SDL_Color() { r = 30, g = 30, b = 60, a = 200 };
+            SDL_Color borderColor = string.IsNullOrWhiteSpace(_username) ? _errorColor : _successColor;
+            
+            DrawPanel(x, y, width, 50, panelColor, borderColor);
+            
+            // Draw username field
+            SDL_Color usernameColor = _isEditingUsername ? _highlightColor : _textColor;
+            string usernameDisplay = _isEditingUsername ? $"Username: {_username}_" : $"Username: {_username}";
+            
+            if (string.IsNullOrWhiteSpace(_username))
+            {
+                usernameDisplay = _isEditingUsername ? $"Enter username: {_username}_" : "Username: (Required)";
+            }
+            
+            RenderText(usernameDisplay, x + width/2, y + 25, usernameColor, false, true);
+            
+            // Draw editing instructions if applicable
+            if (_isEditingUsername)
+            {
+                RenderText("Press Enter to confirm", x + width/2, y + 65, _mutedTextColor, false, true);
+            }
+            else if (string.IsNullOrWhiteSpace(_username))
+            {
+                RenderText("Press U to set username", x + width/2, y + 65, _mutedTextColor, false, true);
+            }
+        }
+        
+        // Draw instructions panel at the bottom with fixed key representation
+        private void DrawInstructionPanel(int x, int y, int width, int height)
+        {
+            DrawPanel(x, y, width, height, _panelBgColor, _primaryColor);
+            
+            // Draw key bindings with proper representation
+            StringBuilder instructions = new StringBuilder();
+            
+            instructions.Append("↑↓: Navigate Songs | ");
+            
+            if (_selectedSongIndex >= 0 && _availableBeatmapSets != null && 
+                _availableBeatmapSets.Count > 0 && 
+                _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
+            {
+                instructions.Append("←→: Select Difficulty | ");
+            }
+            
+            instructions.Append("Enter: Play | ");
+            instructions.Append("U: Change Username | ");
+            instructions.Append("Esc: Exit");
+            
+            RenderText(instructions.ToString(), x + width/2, y + height/2, _textColor, false, true);
+        }
+        
+        // Method to render previous scores for a beatmap
+        private void RenderPreviousScores(string beatmapId, int startY)
+        {
+            try
+            {
+                // Get the map hash for the selected beatmap
+                string mapHash = GetCurrentMapHash();
+                
+                if (string.IsNullOrEmpty(mapHash))
+                {
+                    RenderText("Cannot load scores: Map hash unavailable", 50, startY, _mutedTextColor);
+                    return;
+                }
+                
+                // Get scores for this beatmap using the hash
+                var scores = _scoreService.GetBeatmapScoresByHash(_username, mapHash);
+                
+                if (scores.Count == 0)
+                {
+                    RenderText("No previous plays", 50, startY, _mutedTextColor);
+                    return;
+                }
+                
+                // Display "previous plays" header
+                RenderText("Previous Plays:", 50, startY, _primaryColor);
+                
+                // Display up to 3 most recent scores
+                int displayCount = Math.Min(scores.Count, 3);
+                for (int i = 0; i < displayCount; i++)
+                {
+                    var score = scores[i];
+                    string date = score.DatePlayed.ToString("yyyy-MM-dd HH:mm");
+                    
+                    // Display score info
+                    string scoreInfo = $"{date} - Score: {score.Score:N0} - Acc: {score.Accuracy:P2} - Combo: {score.MaxCombo}x";
+                    
+                    SDL_Color scoreColor = new SDL_Color();
+                    if (i == 0)
+                    {
+                        // Highlight best score with gold
+                        scoreColor = _highlightColor;
+                    }
+                    else if (i == 1)
+                    {
+                        // Silver for second best
+                        scoreColor = new SDL_Color() { r = 192, g = 192, b = 192, a = 255 };
+                    }
+                    else
+                    {
+                        // Bronze for third
+                        scoreColor = new SDL_Color() { r = 205, g = 127, b = 50, a = 255 };
+                    }
+                    
+                    RenderText(scoreInfo, 70, startY + 30 + (i * 30), scoreColor);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error rendering previous scores: {ex.Message}");
+            }
+        }
+        
+        // Method to preview the music of the selected beatmap
+        private void PreviewBeatmapAudio(string beatmapPath)
+        {
+            // Don't restart preview if already playing this beatmap
+            if (_isPreviewPlaying && beatmapPath == _previewedBeatmapPath)
+                return;
+            
+            // Stop any currently playing preview
+            StopAudioPreview();
+            
+            try
+            {
+                // Skip if audio is disabled
+                if (!_audioEnabled)
+                    return;
+                
+                // Get the beatmap directory and load basic audio info
+                string beatmapDir = Path.GetDirectoryName(beatmapPath) ?? string.Empty;
+                if (string.IsNullOrEmpty(beatmapDir))
+                    return;
+                
+                // Try to find the audio file by reading the osu file directly
+                string? audioFilename = null;
+                
+                try 
+                {
+                    using (var reader = new StreamReader(beatmapPath))
+                    {
+                        string? line;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            if (line.StartsWith("AudioFilename:"))
+                            {
+                                audioFilename = line.Substring(15).Trim();
+                                break;
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error reading beatmap file: {ex.Message}");
+                    return;
+                }
+                
+                if (string.IsNullOrEmpty(audioFilename))
+                    return;
+                
+                // Construct the full path to the audio file
+                string audioPath = Path.Combine(beatmapDir, audioFilename);
+                if (!File.Exists(audioPath))
+                {
+                    Console.WriteLine($"Audio file not found: {audioPath}");
+                    return;
+                }
+                
+                // Save the path of the beatmap being previewed
+                _previewedBeatmapPath = beatmapPath;
+                
+                // Load and play the audio at preview volume
+                LoadAndPlayAudioPreview(audioPath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error previewing audio: {ex.Message}");
+            }
+        }
+        
+        // Method to load and play audio preview
+        private void LoadAndPlayAudioPreview(string audioPath)
+        {
+            try
+            {
+                // Stop any existing audio
+                StopAudio();
+                
+                // Create audio reader based on file extension
+                string extension = Path.GetExtension(audioPath).ToLower();
+                
+                if (extension == ".mp3")
+                {
+                    _audioReader = new Mp3FileReader(audioPath);
+                    _audioFile = (Mp3FileReader)_audioReader;
+                }
+                else if (extension == ".wav")
+                {
+                    _audioReader = new WaveFileReader(audioPath);
+                    _audioFile = (WaveFileReader)_audioReader;
+                }
+                else
+                {
+                    Console.WriteLine($"Unsupported audio format: {extension}");
+                    return;
+                }
+                
+                // Create sample provider
+                _sampleProvider = _audioFile.ToSampleProvider();
+                
+                // Apply volume (70% of normal volume for preview)
+                _sampleProvider = new VolumeSampleProvider(_sampleProvider)
+                {
+                    Volume = _volume * 0.7f
+                };
+                
+                // Initialize audio player if needed
+                if (_audioPlayer == null)
+                {
+                    InitializeAudioPlayer();
+                }
+                
+                // Set up playback position to start shortly into the song (usually where the main melody begins)
+                if (_audioFile is Mp3FileReader mp3Reader)
+                {
+                    // Skip to 25% into the song, but not more than 30 seconds and not less than 10 seconds
+                    TimeSpan skipTo = TimeSpan.FromSeconds(
+                        Math.Min(30, Math.Max(10, mp3Reader.TotalTime.TotalSeconds * 0.25))
+                    );
+                    mp3Reader.CurrentTime = skipTo;
+                }
+                else if (_audioFile is WaveFileReader waveReader)
+                {
+                    // Skip to 25% into the song, but not more than 30 seconds and not less than 10 seconds
+                    TimeSpan skipTo = TimeSpan.FromSeconds(
+                        Math.Min(30, Math.Max(10, waveReader.TotalTime.TotalSeconds * 0.25))
+                    );
+                    waveReader.CurrentTime = skipTo;
+                }
+                
+                // Play the audio
+                _audioPlayer?.Init(_sampleProvider);
+                _audioPlayer?.Play();
+                _audioLoaded = true;
+                _isPreviewPlaying = true;
+                
+                Console.WriteLine($"Preview audio loaded: {audioPath}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading audio preview: {ex.Message}");
+                _audioLoaded = false;
+                _isPreviewPlaying = false;
+            }
+        }
+        
+        // Method to stop audio preview
+        private void StopAudioPreview()
+        {
+            if (_isPreviewPlaying)
+            {
+                StopAudio();
+                _isPreviewPlaying = false;
+                _previewedBeatmapPath = string.Empty;
+            }
+        }
+        
+        // Helper method to get the currently selected beatmap info
+        private BeatmapInfo? GetSelectedBeatmapInfo()
+        {
+            if (_availableBeatmapSets != null && _selectedSongIndex >= 0 && 
+                _selectedSongIndex < _availableBeatmapSets.Count &&
+                _selectedDifficultyIndex >= 0 && 
+                _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+            {
+                return _availableBeatmapSets[_selectedSongIndex].Beatmaps[_selectedDifficultyIndex];
+            }
+            return null;
         }
     }
 } 
