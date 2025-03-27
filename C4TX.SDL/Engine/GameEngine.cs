@@ -22,6 +22,7 @@ namespace C4TX.SDL.Engine
         private readonly SettingsService _settingsService;
         private AccuracyService _accuracyService;
         private SkinService? _skinService;
+        private DifficultyRatingService _difficultyRatingService;
         private Beatmap? _currentBeatmap;
         private double _currentTime;
         private Stopwatch _gameTimer;
@@ -192,6 +193,7 @@ namespace C4TX.SDL.Engine
             _scoreService = new ScoreService();
             _settingsService = new SettingsService();
             _accuracyService = new AccuracyService();
+            _difficultyRatingService = new DifficultyRatingService();
             _gameTimer = new Stopwatch();
             _availableBeatmapSets = new List<BeatmapSet>();
 
@@ -3312,165 +3314,232 @@ namespace C4TX.SDL.Engine
             if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0)
                 return;
             
-            // Display current map pack as header
-            if (_selectedSongIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count)
-            {
-                var currentMapset = _availableBeatmapSets[_selectedSongIndex];
-                string mapSetName = currentMapset.Name;
-                if (mapSetName.Length > 28) mapSetName = mapSetName.Substring(0, 26) + "...";
-                
-                // Draw map pack header within a small panel
-                int headerPanelHeight = 30;
-                DrawPanel(x + 10, y + 30, width - 20, headerPanelHeight, _primaryColor, _accentColor, 1);
-                RenderText(mapSetName, x + width/2, y + 30 + headerPanelHeight/2 - 2, _textColor, false, true);
-                
-                // Adjust the remaining content area
-                y += headerPanelHeight + 10;
-                height -= headerPanelHeight + 10;
-            }
-            
-            // Calculate viewable items
+            // Constants for item heights and padding
             int itemHeight = 50; // Base height for a song
             int difficultyHeight = 30; // Height for each difficulty
             
-            // Track expanded state and total height required
-            int totalContentHeight = 0;
-            Dictionary<int, bool> songExpanded = new Dictionary<int, bool>();
+            // Calculate the absolute boundaries of the visible area
+            int viewAreaTop = y + 25; // Top of the visible area
+            int viewAreaHeight = height - 40; // Height of the visible area
+            int viewAreaBottom = viewAreaTop + viewAreaHeight; // Bottom boundary
             
-            // Calculate if songs are expanded based on selection
+            // Track which songs are expanded
+            Dictionary<int, bool> songExpanded = new Dictionary<int, bool>();
             for (int i = 0; i < _availableBeatmapSets.Count; i++)
             {
-                bool isExpanded = (i == _selectedSongIndex);
-                songExpanded[i] = isExpanded;
-                
-                totalContentHeight += itemHeight;
-                if (isExpanded)
-                {
-                    totalContentHeight += _availableBeatmapSets[i].Beatmaps.Count * difficultyHeight;
-                }
+                songExpanded[i] = (i == _selectedSongIndex);
             }
             
-            // Calculate scroll position to keep selected song in view
-            int contentViewHeight = height - 40; // Height of viewable area
-            int maxScroll = Math.Max(0, totalContentHeight - contentViewHeight);
+            // ---------------------------
+            // PHASE 1: Measure all content
+            // ---------------------------
             
-            // Calculate position of selected difficulty to center it vertically
-            int currentPos = 0;
-            int selectedSongPos = 0;
-            int selectedDifficultyPos = 0;
+            // First, calculate total content height and positions for all items
+            int totalContentHeight = 0;
+            List<(int Index, int StartY, int EndY, bool IsSong, int ParentIndex)> itemPositions = new List<(int, int, int, bool, int)>();
             
-            for (int i = 0; i < _selectedSongIndex; i++)
+            // Process each song and its difficulties
+            for (int i = 0; i < _availableBeatmapSets.Count; i++)
             {
-                currentPos += itemHeight;
+                // Add song position
+                int songStartY = totalContentHeight;
+                int songEndY = songStartY + itemHeight;
+                itemPositions.Add((i, songStartY, songEndY, true, -1)); // Song has no parent (-1)
+                totalContentHeight += itemHeight;
+                
+                // If expanded, add all its difficulties
                 if (songExpanded[i])
                 {
-                    currentPos += _availableBeatmapSets[i].Beatmaps.Count * difficultyHeight;
+                    var difficulties = _availableBeatmapSets[i].Beatmaps;
+                    for (int j = 0; j < difficulties.Count; j++)
+                    {
+                        int diffStartY = totalContentHeight;
+                        int diffEndY = diffStartY + difficultyHeight;
+                        itemPositions.Add((j, diffStartY, diffEndY, false, i)); // Difficulty belongs to song i
+                        totalContentHeight += difficultyHeight;
+                    }
                 }
             }
             
-            // Position of the selected song
-            selectedSongPos = currentPos;
+            // ---------------------------
+            // PHASE 2: Calculate scroll position
+            // ---------------------------
             
-            // Add position to get to the selected difficulty
-            if (_selectedSongIndex < _availableBeatmapSets.Count && 
-                _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+            // Identify position of selected item (either song or difficulty)
+            int selectedItemY = 0;
+            int selectedItemHeight = 0;
+            
+            if (_selectedSongIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count)
             {
-                selectedDifficultyPos = selectedSongPos + itemHeight + (_selectedDifficultyIndex * difficultyHeight);
-            }
-            else
-            {
-                selectedDifficultyPos = selectedSongPos;
-            }
-            
-            // Calculate scroll offset to center the selected difficulty
-            int scrollTarget = selectedDifficultyPos + (difficultyHeight / 2);
-            int scrollOffset = Math.Min(maxScroll, Math.Max(0, scrollTarget - contentViewHeight / 2));
-            
-            // Draw songs with scrolling
-            int currentY = y + 25 - scrollOffset;
-            
-            for (int i = 0; i < _availableBeatmapSets.Count; i++)
-            {
-                var beatmapSet = _availableBeatmapSets[i];
-                bool isSelected = i == _selectedSongIndex;
+                // Find the selected song in our positions list
+                var selectedSongInfo = itemPositions.FirstOrDefault(p => p.IsSong && p.Index == _selectedSongIndex);
                 
-                // Skip if completely out of view
-                if (currentY + itemHeight < y + 25 || currentY > y + height - 15)
+                if (songExpanded[_selectedSongIndex] && 
+                    _selectedDifficultyIndex >= 0 && 
+                    _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
                 {
-                    // Update position even if not drawing
-                    currentY += itemHeight;
-                    if (songExpanded[i])
+                    // Find the selected difficulty
+                    var selectedDiffInfo = itemPositions.FirstOrDefault(p => !p.IsSong && p.ParentIndex == _selectedSongIndex && p.Index == _selectedDifficultyIndex);
+                    selectedItemY = selectedDiffInfo.StartY;
+                    selectedItemHeight = difficultyHeight;
+                }
+                else
+                {
+                    // Just the song is selected
+                    selectedItemY = selectedSongInfo.StartY;
+                    selectedItemHeight = itemHeight;
+                }
+            }
+            
+            // Calculate max possible scroll
+            int maxScroll = Math.Max(0, totalContentHeight - viewAreaHeight);
+            
+            // Center the selected item in the view
+            int targetScrollPos = selectedItemY + (selectedItemHeight / 2) - (viewAreaHeight / 2);
+            targetScrollPos = Math.Max(0, Math.Min(maxScroll, targetScrollPos));
+            
+            // Special case for last items: ensure bottom items are fully visible
+            if (_selectedSongIndex >= 0 && 
+                _selectedSongIndex < _availableBeatmapSets.Count && 
+                songExpanded[_selectedSongIndex])
+            {
+                var diffCount = _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count;
+                
+                // If we're selecting one of the last difficulties
+                if (_selectedDifficultyIndex >= diffCount - 3)
+                {
+                    // Get the last visible item position
+                    var lastItemInfo = itemPositions.LastOrDefault(p => p.ParentIndex == _selectedSongIndex);
+                    int contentBottom = lastItemInfo.EndY;
+                    
+                    // Check if the bottom content would be visible with current scroll
+                    if (contentBottom - targetScrollPos > viewAreaHeight)
                     {
-                        currentY += beatmapSet.Beatmaps.Count * difficultyHeight;
+                        // Adjust scroll to show the last items
+                        targetScrollPos = Math.Min(maxScroll, contentBottom - viewAreaHeight);
                     }
+                }
+            }
+            
+            // Final scroll offset
+            int scrollOffset = targetScrollPos;
+            
+            // ---------------------------
+            // PHASE 3: Render items
+            // ---------------------------
+            
+            // Debug visualization (uncomment to help debug)
+            /*
+            RenderText($"Scroll: {scrollOffset}/{maxScroll}", x + width - 80, y - 10, _errorColor);
+            RenderText($"Total Height: {totalContentHeight}", x + width - 200, y - 10, _errorColor);
+            */
+            
+            // Draw each item based on its position
+            foreach (var item in itemPositions)
+            {
+                // Calculate the actual screen Y position after applying scroll
+                int screenY = viewAreaTop + item.StartY - scrollOffset;
+                
+                // Always draw the selected item
+                bool isSelected = (item.IsSong && item.Index == _selectedSongIndex) || 
+                                 (!item.IsSong && item.ParentIndex == _selectedSongIndex && item.Index == _selectedDifficultyIndex);
+                
+                // Skip items completely outside the view area (with some buffer)
+                int itemHeightValue = item.IsSong ? itemHeight : difficultyHeight;
+                if (screenY + itemHeightValue < viewAreaTop - 50 || screenY > viewAreaBottom + 50)
+                {
+                    // Skip this item - completely out of view
                     continue;
                 }
                 
-                // Draw song item
-                SDL_Color songBgColor = isSelected ? _primaryColor : _panelBgColor;
-                SDL_Color textColor = isSelected ? _textColor : _mutedTextColor;
-                
-                // Calculate proper panel height and text position for better alignment
-                int actualItemHeight = itemHeight - 5;
-                DrawPanel(x + 5, currentY, width - 10, actualItemHeight, songBgColor, isSelected ? _accentColor : _panelBgColor, isSelected ? 2 : 0);
-                
-                // Truncate text if too long for the panel
-                string songTitle = $"{beatmapSet.Artist} - {beatmapSet.Title}";
-                if (songTitle.Length > 30) songTitle = songTitle.Substring(0, 28) + "...";
-                
-                // Move text up by 3px from center for better visual alignment
-                RenderText(songTitle, x + 20, currentY + actualItemHeight/2 - 3, textColor, false, false);
-                
-                // Draw expansion indicator with same adjustment
-                string expandSymbol = songExpanded[i] ? "▼" : "▶";
-                RenderText(expandSymbol, x + width - 20, currentY + actualItemHeight/2 - 3, textColor, false, true);
-                
-                currentY += itemHeight;
-                
-                // Draw difficulties if expanded
-                if (songExpanded[i])
+                // Draw song or difficulty based on item type
+                if (item.IsSong)
                 {
-                    for (int j = 0; j < beatmapSet.Beatmaps.Count; j++)
+                    // Draw song item
+                    var beatmapSet = _availableBeatmapSets[item.Index];
+                    bool isExpanded = songExpanded[item.Index];
+                    
+                    // Draw song background
+                    SDL_Color songBgColor = isSelected ? _primaryColor : _panelBgColor;
+                    SDL_Color textColor = isSelected ? _textColor : _mutedTextColor;
+                    
+                    // Calculate proper panel height for better alignment
+                    int actualItemHeight = itemHeight - 5;
+                    DrawPanel(x + 5, screenY, width - 10, actualItemHeight, songBgColor, isSelected ? _accentColor : _panelBgColor, isSelected ? 2 : 0);
+                    
+                    // Truncate text if too long
+                    string songTitle = $"{beatmapSet.Artist} - {beatmapSet.Title}";
+                    if (songTitle.Length > 30) songTitle = songTitle.Substring(0, 28) + "...";
+                    
+                    // Render song text
+                    RenderText(songTitle, x + 20, screenY + actualItemHeight/2 - 3, textColor, false, false);
+                    
+                    // Draw expansion indicator
+                    string expandSymbol = isExpanded ? "▼" : "▶";
+                    RenderText(expandSymbol, x + width - 20, screenY + actualItemHeight/2 - 3, textColor, false, true);
+                }
+                else
+                {
+                    // Draw difficulty item
+                    var beatmapSet = _availableBeatmapSets[item.ParentIndex];
+                    var beatmap = beatmapSet.Beatmaps[item.Index];
+                    bool isDiffSelected = item.ParentIndex == _selectedSongIndex && item.Index == _selectedDifficultyIndex;
+                    
+                    // Draw difficulty background
+                    SDL_Color diffBgColor = isDiffSelected ? _accentColor : new SDL_Color { r = 40, g = 40, b = 70, a = 255 };
+                    SDL_Color diffTextColor = isDiffSelected ? _textColor : _mutedTextColor;
+                    
+                    // Calculate proper panel height for better alignment
+                    int actualPanelHeight = difficultyHeight - 5;
+                    DrawPanel(x + 35, screenY, width - 40, actualPanelHeight, diffBgColor, isDiffSelected ? _highlightColor : diffBgColor, isDiffSelected ? 2 : 0);
+                    
+                    // Truncate difficulty text if needed
+                    string diffName = beatmap.Difficulty;
+                    if (diffName.Length > 25) diffName = diffName.Substring(0, 23) + "...";
+                    
+                    // Calculate difficulty rating
+                    double difficultyRating;
+                    
+                    if (_currentBeatmap != null && _currentBeatmap.Id == beatmap.Id)
                     {
-                        var beatmap = beatmapSet.Beatmaps[j];
-                        bool isDiffSelected = isSelected && j == _selectedDifficultyIndex;
-                        
-                        // Skip if out of view
-                        if (currentY + difficultyHeight < y + 25 || currentY > y + height - 15)
-                        {
-                            currentY += difficultyHeight;
-                            continue;
-                        }
-                        
-                        // Draw difficulty item
-                        SDL_Color diffBgColor = isDiffSelected ? _accentColor : new SDL_Color { r = 40, g = 40, b = 70, a = 255 };
-                        SDL_Color diffTextColor = isDiffSelected ? _textColor : _mutedTextColor;
-                        
-                        // Calculate proper panel height and text position for better alignment
-                        int actualPanelHeight = difficultyHeight - 5;
-                        DrawPanel(x + 35, currentY, width - 40, actualPanelHeight, diffBgColor, isDiffSelected ? _highlightColor : diffBgColor, isDiffSelected ? 2 : 0);
-                        
-                        // Display difficulty name - center within the actual panel height
-                        string diffName = beatmap.Difficulty;
-                        if (diffName.Length > 25) diffName = diffName.Substring(0, 23) + "...";
-                        
-                        // Move text up by 3px from center for better visual alignment
-                        RenderText(diffName, x + 50, currentY + actualPanelHeight/2 - 3, diffTextColor, false, false);
-                        
-                        currentY += difficultyHeight;
+                        // Use full beatmap for more accurate rating
+                        difficultyRating = _difficultyRatingService.CalculateDifficulty(_currentBeatmap);
+                        beatmap.CachedDifficultyRating = difficultyRating;
                     }
+                    else if (beatmap.CachedDifficultyRating.HasValue)
+                    {
+                        // Use cached value
+                        difficultyRating = beatmap.CachedDifficultyRating.Value;
+                    }
+                    else
+                    {
+                        // Calculate new rating
+                        difficultyRating = _difficultyRatingService.CalculateDifficulty(beatmap);
+                        beatmap.CachedDifficultyRating = difficultyRating;
+                    }
+                    
+                    // Get difficulty color
+                    var difficultyColor = _difficultyRatingService.GetDifficultyColor(difficultyRating);
+                    SDL_Color ratingColor = new SDL_Color { r = difficultyColor.r, g = difficultyColor.g, b = difficultyColor.b, a = 255 };
+                    
+                    // Render difficulty text
+                    RenderText(diffName, x + 50, screenY + actualPanelHeight/2 - 3, diffTextColor, false, false);
+                    
+                    // Render difficulty rating
+                    string ratingText = $"{difficultyRating:F1}★";
+                    RenderText(ratingText, x + width - 50, screenY + actualPanelHeight/2 - 3, ratingColor, false, false);
                 }
             }
             
             // Draw scroll indicators if needed
             if (scrollOffset > 0)
             {
-                RenderText("▲", x + width/2, y + 35, _accentColor, false, true);
+                RenderText("▲", x + width/2, viewAreaTop + 10, _accentColor, false, true);
             }
             
             if (scrollOffset < maxScroll)
             {
-                RenderText("▼", x + width/2, y + height - 15, _accentColor, false, true);
+                RenderText("▼", x + width/2, viewAreaBottom - 10, _accentColor, false, true);
             }
         }
         
@@ -3509,6 +3578,41 @@ namespace C4TX.SDL.Engine
             
             // Difficulty info
             RenderText($"Difficulty: {currentBeatmap.Difficulty}", textX, textY, _textColor);
+            textY += 25;
+            
+            // Calculate difficulty rating
+            double difficultyRating;
+            string difficultyName;
+            
+            // If the current beatmap is loaded, use it for more accurate difficulty calculation
+            if (_currentBeatmap != null && _currentBeatmap.Id == currentBeatmap.Id)
+            {
+                // Use the full beatmap with hit objects for better difficulty calculation
+                difficultyRating = _difficultyRatingService.CalculateDifficulty(_currentBeatmap);
+                
+                // Cache the calculated rating
+                currentBeatmap.CachedDifficultyRating = difficultyRating;
+            }
+            else if (currentBeatmap.CachedDifficultyRating.HasValue)
+            {
+                // Use cached value if available
+                difficultyRating = currentBeatmap.CachedDifficultyRating.Value;
+            }
+            else
+            {
+                // Use the beatmap info only when full beatmap isn't available
+                difficultyRating = _difficultyRatingService.CalculateDifficulty(currentBeatmap);
+                
+                // Cache the calculated rating
+                currentBeatmap.CachedDifficultyRating = difficultyRating;
+            }
+            
+            difficultyName = _difficultyRatingService.GetDifficultyName(difficultyRating);
+            var difficultyColor = _difficultyRatingService.GetDifficultyColor(difficultyRating);
+            SDL_Color ratingColor = new SDL_Color { r = difficultyColor.r, g = difficultyColor.g, b = difficultyColor.b, a = 255 };
+            
+            // Add rating display
+            RenderText($"Rating: {difficultyRating:F1}★ ({difficultyName})", textX, textY, ratingColor);
             textY += 25;
             
             // Additional info if available
@@ -3558,9 +3662,9 @@ namespace C4TX.SDL.Engine
                 if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.MapHash))
                 {
                     mapHash = _currentBeatmap.MapHash;
-                }
-                else
-                {
+            }
+            else
+            {
                     // Calculate hash if needed
                     mapHash = _beatmapService.CalculateBeatmapHash(currentBeatmap.Path);
                 }
@@ -3643,9 +3747,9 @@ namespace C4TX.SDL.Engine
                     if (i == 0)
                         rowColor = _highlightColor; // Gold for best
                     else if (i == 1)
-                        rowColor = new SDL_Color { r = 192, g = 192, b = 192, a = 255 }; // Silver for second best
+                        rowColor = new SDL_Color() { r = 192, g = 192, b = 192, a = 255 }; // Silver for second best
                     else if (i == 2)
-                        rowColor = new SDL_Color { r = 205, g = 127, b = 50, a = 255 }; // Bronze for third
+                        rowColor = new SDL_Color() { r = 205, g = 127, b = 50, a = 255 }; // Bronze for third
                     else
                         rowColor = _textColor;
                     

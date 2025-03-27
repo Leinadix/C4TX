@@ -47,6 +47,9 @@ namespace C4TX.SDL.Models
         public string SetId { get; set; } = string.Empty;
         public string Path { get; set; } = string.Empty;
         public string Difficulty { get; set; } = string.Empty;
+        
+        // Cached difficulty rating - if null, it needs to be calculated
+        public double? CachedDifficultyRating { get; set; } = null;
     }
 
     public class HitObject
