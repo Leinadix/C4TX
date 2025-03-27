@@ -3,12 +3,12 @@
   "WorkspaceRootPath": "C:\\Users\\craft\\Desktop\\Coding\\catch3k\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{DE28FED6-30FF-4C04-8A70-753C0037CCC0}|Catch3K.Core\\Catch3K.Core.csproj|c:\\users\\craft\\desktop\\coding\\catch3k\\catch3k.core\\engine\\gameengine.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{DE28FED6-30FF-4C04-8A70-753C0037CCC0}|Catch3K.Core\\Catch3K.Core.csproj|solutionrelative:catch3k.core\\engine\\gameengine.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{F9E8BA04-1CE9-4FD2-AB5F-C8CDF78F27C0}|Catch3K.SDL\\Catch3K.SDL.csproj|c:\\users\\craft\\desktop\\coding\\catch3k\\catch3k.sdl\\setup-sdl.ps1||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{F9E8BA04-1CE9-4FD2-AB5F-C8CDF78F27C0}|Catch3K.SDL\\Catch3K.SDL.csproj|solutionrelative:catch3k.sdl\\setup-sdl.ps1||{3B902123-F8A7-4915-9F01-361F908088D0}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{3884D5E3-05CC-4CA4-A417-1B94BDFA1E82}|Catch3K.Client\\Catch3K.Client.csproj|c:\\users\\craft\\desktop\\coding\\catch3k\\catch3k.client\\catch3k.client.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|",
-      "RelativeMoniker": "D:0:0:{3884D5E3-05CC-4CA4-A417-1B94BDFA1E82}|Catch3K.Client\\Catch3K.Client.csproj|solutionrelative:catch3k.client\\catch3k.client.csproj||{FA3CD31E-987B-443A-9B81-186104E8DAC1}|"
+      "AbsoluteMoniker": "D:0:0:{F9E8BA04-1CE9-4FD2-AB5F-C8CDF78F27C0}|Catch3K.SDL\\Catch3K.SDL.csproj|c:\\users\\craft\\desktop\\coding\\catch3k\\catch3k.sdl\\engine\\gameengine.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{F9E8BA04-1CE9-4FD2-AB5F-C8CDF78F27C0}|Catch3K.SDL\\Catch3K.SDL.csproj|solutionrelative:catch3k.sdl\\engine\\gameengine.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -23,27 +23,27 @@
             {
               "$type": "Document",
               "DocumentIndex": 0,
-              "Title": "GameEngine.cs",
-              "DocumentMoniker": "C:\\Users\\craft\\Desktop\\Coding\\catch3k\\Catch3K.Core\\Engine\\GameEngine.cs",
-              "RelativeDocumentMoniker": "Catch3K.Core\\Engine\\GameEngine.cs",
-              "ToolTip": "C:\\Users\\craft\\Desktop\\Coding\\catch3k\\Catch3K.Core\\Engine\\GameEngine.cs*",
-              "RelativeToolTip": "Catch3K.Core\\Engine\\GameEngine.cs*",
-              "ViewState": "AgIAAD8BAAAAAAAAAAAIwD8BAAAsAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-03-24T17:59:34.885Z",
+              "Title": "setup-sdl.ps1",
+              "DocumentMoniker": "C:\\Users\\craft\\Desktop\\Coding\\catch3k\\Catch3K.SDL\\setup-sdl.ps1",
+              "RelativeDocumentMoniker": "Catch3K.SDL\\setup-sdl.ps1",
+              "ToolTip": "C:\\Users\\craft\\Desktop\\Coding\\catch3k\\Catch3K.SDL\\setup-sdl.ps1",
+              "RelativeToolTip": "Catch3K.SDL\\setup-sdl.ps1",
+              "ViewState": "AgIAAB8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "00000000-0000-0000-0000-000000000000.000000|iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAKISURBVDhPlVLdS1RBFP/dux/JrppKUVoISrRSbVGEBq4Z5ZPRk39A9FYPUQ89CUEv2WOC\u002BFRB9QcUPoQkBItUkAa\u002BpNZ\u002BGO2u3nbdVe/evevuzsydZmY/shehM/fMuefMnN/8zuFoEBIOh7m0\u002BwnnnPX39z/0\u002B/1PaiEVVFYCUEI4pYQzRpU6DlMqY9IuLCzwubk5llhP3lFJNdHlJoHkUl8NtG51XV0BIQShUEj/vrw6GY/Hb6qgEHXqOM6\u002BIFJs28b8/Ly86xUAL2vhvwzEVgXZ8984EzIycg1ng0H0BQLKr4tqoqiND18egqYJV\u002BjMu/fo7OpSvk0YvG4dLvFUhXI44j7hGtKGwW\u002BN3agW2ChB6PqGAV9bB1oCQUxveIHOHkwl3VjxdyN3vA/rh0/A1X0ShTJRjysAxphkrQAi0Rjgb8VyWUfcpoDLg/uXevDoQwTPI9t4Y5QQyxZgJBOkAbCXQc4uw\u002BQexPJlME3H7dkVdDV78HbsHJZWk1jL5pHezCG9kdr8B0BSkCzyxTLSjgcRqwKnrRWZHRuO7sLH1DZ2ShTRtAlqbsHKGJ8bAJTSBoMCZfhB3JiJb2EzmkDs7jBGX33Bs8VfOAgGZzsPapnIb\u002BVmGwD1ZEnhN/Xia7YEtruLIy1NuPJ6UXV\u002B6voZPBjshVe0Lp/NwNfanpK5brmZpinnRwEcE0n3Ojk8onkmaUGlVEKxQhBeXILf58Pj0258\u002B2TgQPuhhExRDCzLqvZArN5mDReabARdBYSaihjylzCgZREs/MRoB8HRbAzcyiGTSkRlrmJQLBZVCZpYVwcHlJUDVZ0r6dV9DafOX8Sa8RQvpieZzFXDMD4\u002BXp3X/5CJiQmRC/wBUOeA8MehIQsAAAAASUVORK5CYII=",
+              "WhenOpened": "2025-03-27T16:56:19.747Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
               "DocumentIndex": 1,
-              "Title": "Catch3K.Client",
-              "DocumentMoniker": "C:\\Users\\craft\\Desktop\\Coding\\catch3k\\Catch3K.Client\\Catch3K.Client.csproj",
-              "RelativeDocumentMoniker": "Catch3K.Client\\Catch3K.Client.csproj",
-              "ToolTip": "C:\\Users\\craft\\Desktop\\Coding\\catch3k\\Catch3K.Client\\Catch3K.Client.csproj",
-              "RelativeToolTip": "Catch3K.Client\\Catch3K.Client.csproj",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAABMAAAAAAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
-              "WhenOpened": "2025-03-24T17:59:06.243Z",
+              "Title": "GameEngine.cs",
+              "DocumentMoniker": "C:\\Users\\craft\\Desktop\\Coding\\catch3k\\Catch3K.SDL\\Engine\\GameEngine.cs",
+              "RelativeDocumentMoniker": "Catch3K.SDL\\Engine\\GameEngine.cs",
+              "ToolTip": "C:\\Users\\craft\\Desktop\\Coding\\catch3k\\Catch3K.SDL\\Engine\\GameEngine.cs",
+              "RelativeToolTip": "Catch3K.SDL\\Engine\\GameEngine.cs",
+              "ViewState": "AgIAAKMJAAAAAAAAAAAwwLYJAAAUAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-03-26T12:54:27.172Z",
               "EditorCaption": ""
             }
           ]
