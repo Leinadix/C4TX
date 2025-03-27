@@ -6,7 +6,7 @@ namespace C4TX.SDL.Services
 {
     public class DifficultyRatingService
     {
-        private const double DEFAULT_RATING = 2.5;
+        private const double DEFAULT_RATING = 0.0;
 
         /// <summary>
         /// Calculates the difficulty rating for a beatmap info
@@ -37,50 +37,10 @@ namespace C4TX.SDL.Services
             double lengthInSeconds = beatmap.Length / 1000.0;
             if (lengthInSeconds <= 0) lengthInSeconds = 1; // Prevent division by zero
             double notesDensity = hitObjects.Count / lengthInSeconds;
-            
-            // 2. Calculate the average time between notes
-            double[] timeBetweenNotes = new double[hitObjects.Count - 1];
-            for (int i = 0; i < hitObjects.Count - 1; i++)
-            {
-                timeBetweenNotes[i] = Math.Abs(hitObjects[i + 1].StartTime - hitObjects[i].StartTime);
-            }
-            double averageTimeBetweenNotes = timeBetweenNotes.Length > 0 ? timeBetweenNotes.Average() : 0;
-            
-            // 3. Calculate pattern complexity (column changes)
-            int columnChanges = 0;
-            for (int i = 0; i < hitObjects.Count - 1; i++)
-            {
-                if (hitObjects[i].Column != hitObjects[i + 1].Column)
-                {
-                    columnChanges++;
-                }
-            }
-            double columnChangeRatio = hitObjects.Count > 1 ? (double)columnChanges / (hitObjects.Count - 1) : 0;
-            
-            // 4. Count long notes
-            int longNoteCount = hitObjects.Count(n => n.Type == HitObjectType.LongNote);
-            double longNoteRatio = (double)longNoteCount / hitObjects.Count;
-            
-            // 5. Calculate standard deviation of time between notes (for rhythm complexity)
-            double stdDev = 0;
-            if (timeBetweenNotes.Length > 0)
-            {
-                double sum = timeBetweenNotes.Sum(t => Math.Pow(t - averageTimeBetweenNotes, 2));
-                stdDev = Math.Sqrt(sum / timeBetweenNotes.Length);
-            }
-            
-            // 6. Calculate difficulty based on factors, each with different weights
-            double densityFactor = Math.Min(notesDensity / 8.0, 1.0) * 3.0; // Max 3.0 points for density
-            double timingFactor = Math.Min(300.0 / (averageTimeBetweenNotes + 1.0), 1.0) * 2.0; // Max 2.0 points for timing
-            double patternFactor = columnChangeRatio * 2.0; // Max 2.0 points for pattern complexity
-            double longNoteFactor = longNoteRatio * 1.0; // Max 1.0 points for long notes
-            double rhythmFactor = Math.Min(stdDev / 200.0, 1.0) * 2.0; // Max 2.0 points for rhythm complexity
-            
-            // Combine factors to get final rating (base 0-10 scale)
-            double calculatedRating = densityFactor + timingFactor + patternFactor + longNoteFactor + rhythmFactor;
-            
-            // Ensure the rating stays within 0.5-10.0 range
-            return Math.Max(0.5, Math.Min(calculatedRating, 10.0));
+            double calculatedRating = DifficultyCalculator.Calculate(hitObjects.ToArray(), 1.0);
+
+
+            return Math.Max(0.0, calculatedRating);
         }
 
         /// <summary>
