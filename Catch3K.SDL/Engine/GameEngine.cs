@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using System.IO;
 using System.Diagnostics;
 using Catch3K.SDL.Models;
 using Catch3K.SDL.Services;
@@ -10,12 +5,15 @@ using NAudio.Wave;
 using NAudio.Vorbis;
 using SDL2;
 using static SDL2.SDL;
+using System.Text;
+using System.Linq;
 
 namespace Catch3K.SDL.Engine
 {
     public class GameEngine : IDisposable
     {
         private readonly BeatmapService _beatmapService;
+        private readonly ScoreService _scoreService;
         private Beatmap? _currentBeatmap;
         private double _currentTime;
         private Stopwatch _gameTimer;
@@ -85,6 +83,12 @@ namespace Catch3K.SDL.Engine
         private int _totalNotes = 0;
         private double _currentAccuracy = 0;
         
+        // Hit popup feedback
+        private string _lastHitFeedback = "";
+        private double _lastHitTime = 0;
+        private double _hitFeedbackDuration = 500; // Display for 500ms
+        private SDL_Color _lastHitColor = new SDL_Color() { r = 255, g = 255, b = 255, a = 255 };
+        
         // Game state enum
         private enum GameState
         {
@@ -104,6 +108,11 @@ namespace Catch3K.SDL.Engine
         private bool _showVolumeIndicator = false;
         private float _lastVolume = 0.7f;
         
+        // Username handling
+        private string _username = "";
+        private bool _isEditingUsername = false;
+        private const int MAX_USERNAME_LENGTH = 20;
+        
         // For results screen
         private List<(double NoteTime, double HitTime, double Deviation)> _noteHits = new List<(double, double, double)>();
         private double _songEndTime = 0;
@@ -112,6 +121,7 @@ namespace Catch3K.SDL.Engine
         public GameEngine(string? songsDirectory = null)
         {
             _beatmapService = new BeatmapService(songsDirectory);
+            _scoreService = new ScoreService();
             _gameTimer = new Stopwatch();
             _availableBeatmapSets = new List<BeatmapSet>();
             
@@ -350,8 +360,45 @@ namespace Catch3K.SDL.Engine
                 // Stop any existing audio playback
                 StopAudio();
                 
+                // Get the beatmap info before loading
+                BeatmapInfo? beatmapInfo = null;
+                
+                // Try to find the corresponding beatmap info
+                if (_availableBeatmapSets != null)
+                {
+                    foreach (var set in _availableBeatmapSets)
+                    {
+                        var info = set.Beatmaps.FirstOrDefault(b => b.Path == beatmapPath);
+                        if (info != null)
+                        {
+                            beatmapInfo = info;
+                            break;
+                        }
+                    }
+                }
+                
                 var originalBeatmap = _beatmapService.LoadBeatmapFromFile(beatmapPath);
                 _currentBeatmap = _beatmapService.ConvertToFourKeyBeatmap(originalBeatmap);
+                
+                // Calculate map hash for score matching
+                string mapHash = _beatmapService.CalculateBeatmapHash(beatmapPath);
+                Console.WriteLine($"Map hash: {mapHash}");
+                
+                // Store the map hash in the beatmap object
+                _currentBeatmap.MapHash = mapHash;
+                
+                // If we found the beatmap info, ensure we use the same ID
+                if (beatmapInfo != null)
+                {
+                    Console.WriteLine($"Using beatmapInfo ID: {beatmapInfo.Id} for consistency");
+                    _currentBeatmap.Id = beatmapInfo.Id;
+                }
+                else
+                {
+                    Console.WriteLine($"No matching beatmapInfo found for path: {beatmapPath}");
+                }
+                
+                Console.WriteLine($"Loaded beatmap with ID: {_currentBeatmap.Id}");
                 
                 // Reset game state
                 _score = 0;
@@ -467,6 +514,10 @@ namespace Catch3K.SDL.Engine
                 Console.WriteLine("No beatmap loaded");
                 return;
             }
+            
+            // Log the current beatmap ID for debugging
+            Console.WriteLine($"Starting game with beatmap ID: {GetCurrentBeatmapId()}");
+            Console.WriteLine($"Current beatmap internal ID: {_currentBeatmap.Id}");
             
             // Reset game state
             _currentTime = 0;
@@ -714,13 +765,6 @@ namespace Catch3K.SDL.Engine
                     }
                 }
                 
-                // Space to restart
-                if (scancode == SDL_Scancode.SDL_SCANCODE_SPACE)
-                {
-                    Stop();
-                    Start();
-                }
-                
                 // Escape to stop
                 if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
                 {
@@ -730,7 +774,11 @@ namespace Catch3K.SDL.Engine
                 // P to pause
                 if (scancode == SDL_Scancode.SDL_SCANCODE_P)
                 {
-                    TogglePause();
+                    // Only allow pausing after the countdown
+                    if (_currentTime >= START_DELAY_MS)
+                    {
+                        TogglePause();
+                    }
                 }
             }
             else if (_currentState == GameState.Paused)
@@ -749,6 +797,103 @@ namespace Catch3K.SDL.Engine
             }
             else if (_currentState == GameState.Menu)
             {
+                // Username editing mode
+                if (_isEditingUsername)
+                {
+                    // Enter to confirm username
+                    if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
+                    {
+                        if (!string.IsNullOrWhiteSpace(_username))
+                        {
+                            _isEditingUsername = false;
+                        }
+                        return;
+                    }
+                    
+                    // Escape to cancel username editing
+                    if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
+                    {
+                        _isEditingUsername = false;
+                        return;
+                    }
+                    
+                    // Backspace to delete characters
+                    if (scancode == SDL_Scancode.SDL_SCANCODE_BACKSPACE)
+                    {
+                        if (_username.Length > 0)
+                        {
+                            _username = _username.Substring(0, _username.Length - 1);
+                        }
+                        return;
+                    }
+                    
+                    // Handle alphabetic keys (A-Z)
+                    if (scancode >= SDL_Scancode.SDL_SCANCODE_A && scancode <= SDL_Scancode.SDL_SCANCODE_Z)
+                    {
+                        if (_username.Length < MAX_USERNAME_LENGTH)
+                        {
+                            int offset = (int)scancode - (int)SDL_Scancode.SDL_SCANCODE_A;
+                            
+                            // Default to lowercase, converting based on keyboard state would require unsafe code
+                            char letter = (char)('a' + offset);
+                            _username += letter;
+                        }
+                        return;
+                    }
+                    
+                    // Handle numeric keys (0-9)
+                    if ((scancode >= SDL_Scancode.SDL_SCANCODE_1 && scancode <= SDL_Scancode.SDL_SCANCODE_9) || 
+                        scancode == SDL_Scancode.SDL_SCANCODE_0)
+                    {
+                        if (_username.Length < MAX_USERNAME_LENGTH)
+                        {
+                            char number;
+                            
+                            if (scancode == SDL_Scancode.SDL_SCANCODE_0)
+                            {
+                                number = '0';
+                            }
+                            else
+                            {
+                                int offset = (int)scancode - (int)SDL_Scancode.SDL_SCANCODE_1;
+                                number = (char)('1' + offset);
+                            }
+                            
+                            _username += number;
+                        }
+                        return;
+                    }
+                    
+                    // Handle space key
+                    if (scancode == SDL_Scancode.SDL_SCANCODE_SPACE)
+                    {
+                        if (_username.Length < MAX_USERNAME_LENGTH)
+                        {
+                            _username += ' ';
+                        }
+                        return;
+                    }
+                    
+                    // Handle underscore/minus key
+                    if (scancode == SDL_Scancode.SDL_SCANCODE_MINUS)
+                    {
+                        if (_username.Length < MAX_USERNAME_LENGTH)
+                        {
+                            _username += '-';
+                        }
+                        return;
+                    }
+                    
+                    return;
+                }
+                
+                // Toggle username editing when U is pressed
+                if (scancode == SDL_Scancode.SDL_SCANCODE_U)
+                {
+                    _isEditingUsername = true;
+                    return;
+                }
+                
                 // Menu navigation
                 // Up/Down to change song or difficulty
                 if (scancode == SDL_Scancode.SDL_SCANCODE_UP)
@@ -779,7 +924,15 @@ namespace Catch3K.SDL.Engine
                 // Enter to start the game
                 else if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
                 {
-                    Start();
+                    if (!string.IsNullOrWhiteSpace(_username))
+                    {
+                        Start();
+                    }
+                    else
+                    {
+                        // If no username, start username editing
+                        _isEditingUsername = true;
+                    }
                 }
                 
                 // Escape to exit
@@ -856,6 +1009,29 @@ namespace Catch3K.SDL.Engine
                         _totalNotes++;
                         _currentAccuracy = _totalAccuracy / _totalNotes;
                         
+                        // Set hit feedback text based on accuracy
+                        _lastHitTime = _currentTime;
+                        if (noteAccuracy >= 0.95)
+                        {
+                            _lastHitFeedback = "PERFECT";
+                            _lastHitColor = new SDL_Color() { r = 255, g = 255, b = 100, a = 255 }; // Bright yellow
+                        }
+                        else if (noteAccuracy >= 0.8)
+                        {
+                            _lastHitFeedback = "GREAT";
+                            _lastHitColor = new SDL_Color() { r = 100, g = 255, b = 100, a = 255 }; // Green
+                        }
+                        else if (noteAccuracy >= 0.6)
+                        {
+                            _lastHitFeedback = "GOOD";
+                            _lastHitColor = new SDL_Color() { r = 100, g = 100, b = 255, a = 255 }; // Blue
+                        }
+                        else
+                        {
+                            _lastHitFeedback = "OK";
+                            _lastHitColor = new SDL_Color() { r = 255, g = 255, b = 255, a = 255 }; // White
+                        }
+                        
                         // Store hit data for results screen
                         double deviation = _currentTime - adjustedStartTime; // Positive = late, negative = early
                         _noteHits.Add((note.StartTime, _currentTime, deviation));
@@ -887,6 +1063,10 @@ namespace Catch3K.SDL.Engine
                 {
                     _currentState = GameState.Results;
                     _hasShownResults = true;
+                    
+                    // Save the score data automatically
+                    SaveScoreData();
+                    
                     return;
                 }
                 
@@ -926,6 +1106,12 @@ namespace Catch3K.SDL.Engine
                         {
                             // This note was missed
                             _combo = 0;
+                            
+                            // Set missed feedback
+                            _lastHitFeedback = "MISS";
+                            _lastHitTime = _currentTime;
+                            _lastHitColor = new SDL_Color() { r = 255, g = 100, b = 100, a = 255 }; // Red
+                            
                             Console.WriteLine("Miss!");
                             _activeNotes.RemoveAt(i);
                         }
@@ -997,6 +1183,21 @@ namespace Catch3K.SDL.Engine
             RenderText("Catch3K SDL", _windowWidth / 2, 50, _textColor, true, true);
             RenderText("4K Rhythm Game", _windowWidth / 2, 90, _textColor, false, true);
             
+            // Draw username field
+            SDL_Color usernameColor = _isEditingUsername ? new SDL_Color() { r = 255, g = 255, b = 100, a = 255 } : _textColor;
+            string usernameDisplay = _isEditingUsername ? $"Username: {_username}_" : $"Username: {_username}";
+            string usernameStatus = string.IsNullOrWhiteSpace(_username) ? "(Required)" : "";
+            
+            RenderText(usernameDisplay, _windowWidth / 2, 130, usernameColor, false, true);
+            if (_isEditingUsername)
+            {
+                RenderText("Press Enter to confirm", _windowWidth / 2, 150, _textColor, false, true);
+            }
+            else if (string.IsNullOrWhiteSpace(_username))
+            {
+                RenderText("Press U to set username " + usernameStatus, _windowWidth / 2, 150, _textColor, false, true);
+            }
+            
             // Draw instructions - replace Unicode arrows with ASCII alternatives
             RenderText("Up/Down: Navigate Songs/Difficulties", _windowWidth / 2, _windowHeight - 180, _textColor, false, true);
             RenderText("Left/Right: Switch between Songs and Difficulties", _windowWidth / 2, _windowHeight - 150, _textColor, false, true);
@@ -1008,7 +1209,7 @@ namespace Catch3K.SDL.Engine
             // Draw song list
             if (_availableBeatmapSets != null && _availableBeatmapSets.Count > 0)
             {
-                int songListY = 150;
+                int songListY = 180; // Moved down to accommodate username field
                 int visibleSongs = 5;
                 
                 if (!_isSelectingDifficulty)
@@ -1073,6 +1274,12 @@ namespace Catch3K.SDL.Engine
                                 string fileName = Path.GetFileName(beatmap.Path);
                                 string diffInfo = $"File: {fileName}";
                                 RenderText(diffInfo, 600, songListY + 30 + ((i - startIndex) * 30), _textColor);
+                                
+                                // Show previous scores if the username is set
+                                if (!string.IsNullOrWhiteSpace(_username))
+                                {
+                                    RenderPreviousScores(beatmap.Id, songListY + 90 + ((i - startIndex) * 30));
+                                }
                             }
                         }
                     }
@@ -1086,6 +1293,68 @@ namespace Catch3K.SDL.Engine
             {
                 RenderText("No beatmaps found", _windowWidth / 2, 200, _textColor, false, true);
                 RenderText("Please place beatmaps in the Songs directory", _windowWidth / 2, 230, _textColor, false, true);
+            }
+        }
+        
+        // New method to render previous scores for a beatmap
+        private void RenderPreviousScores(string beatmapId, int startY)
+        {
+            try
+            {
+                // Get the map hash for the selected beatmap
+                string mapHash = GetCurrentMapHash();
+                
+                if (string.IsNullOrEmpty(mapHash))
+                {
+                    RenderText("Cannot load scores: Map hash unavailable", 50, startY, _textColor);
+                    return;
+                }
+                
+                // Get scores for this beatmap using the hash
+                var scores = _scoreService.GetBeatmapScoresByHash(_username, mapHash);
+                
+                if (scores.Count == 0)
+                {
+                    RenderText("No previous plays", 50, startY, _textColor);
+                    return;
+                }
+                
+                // Display "previous plays" header
+                RenderText("Previous Plays:", 50, startY, _textColor);
+                
+                // Display up to 3 most recent scores
+                int displayCount = Math.Min(scores.Count, 3);
+                for (int i = 0; i < displayCount; i++)
+                {
+                    var score = scores[i];
+                    string date = score.DatePlayed.ToString("yyyy-MM-dd HH:mm");
+                    
+                    // Display score info
+                    string scoreInfo = $"{date} - Score: {score.Score:N0} - Acc: {score.Accuracy:P2} - Combo: {score.MaxCombo}x";
+                    
+                    SDL_Color scoreColor = new SDL_Color();
+                    if (i == 0)
+                    {
+                        // Highlight best score with gold
+                        scoreColor = new SDL_Color() { r = 255, g = 215, b = 0, a = 255 };
+                    }
+                    else if (i == 1)
+                    {
+                        // Silver for second best
+                        scoreColor = new SDL_Color() { r = 192, g = 192, b = 192, a = 255 };
+                    }
+                    else
+                    {
+                        // Bronze for third
+                        scoreColor = new SDL_Color() { r = 205, g = 127, b = 50, a = 255 };
+                    }
+                    
+                    RenderText(scoreInfo, 70, startY + 30 + (i * 30), scoreColor);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error rendering previous scores: {ex.Message}");
             }
         }
         
@@ -1168,6 +1437,26 @@ namespace Catch3K.SDL.Engine
                 }
             }
             
+            // Draw hit feedback popup
+            if (_currentTime - _lastHitTime <= _hitFeedbackDuration && !string.IsNullOrEmpty(_lastHitFeedback))
+            {
+                // Calculate fade out
+                double elapsed = _currentTime - _lastHitTime;
+                double fadePercentage = 1.0 - (elapsed / _hitFeedbackDuration);
+                
+                // Create color with fade
+                SDL_Color fadeColor = _lastHitColor;
+                fadeColor.a = (byte)(255 * fadePercentage);
+                
+                // Calculate position (top-middle of playfield)
+                int playFieldCenterX = (_lanePositions[0] + _lanePositions[3]) / 2;
+                int popupY = 50;
+                
+                // Draw with fade effect
+                SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
+                RenderText(_lastHitFeedback, playFieldCenterX, popupY, fadeColor, true, true);
+            }
+            
             // Draw active notes
             foreach (var noteEntry in _activeNotes)
             {
@@ -1235,7 +1524,7 @@ namespace Catch3K.SDL.Engine
             }
             
             // Draw controls reminder at the bottom
-            RenderText("Space: Restart | Esc: Menu | P: Pause | F11: Fullscreen", _windowWidth / 2, _windowHeight - 20, _textColor, false, true);
+            RenderText("Esc: Menu | P: Pause | F11: Fullscreen", _windowWidth / 2, _windowHeight - 20, _textColor, false, true);
             
             // Draw volume indicator if needed
             if (_showVolumeIndicator)
@@ -1571,6 +1860,138 @@ namespace Catch3K.SDL.Engine
             // Show volume notification
             _volumeChangeTime = _currentTime;
             _showVolumeIndicator = true;
+        }
+        
+        // New method to save score data to file
+        private void SaveScoreData()
+        {
+            if (_currentBeatmap == null || string.IsNullOrWhiteSpace(_username))
+                return;
+                
+            try
+            {
+                // Get the current beatmap info from the selected difficulty
+                string beatmapId = GetCurrentBeatmapId();
+                string mapHash = GetCurrentMapHash();
+                
+                // Create and populate score data
+                ScoreData scoreData = new ScoreData
+                {
+                    Username = _username,
+                    Score = _score,
+                    Accuracy = _currentAccuracy,
+                    MaxCombo = _maxCombo,
+                    
+                    // Beatmap information - use the ID from the beatmap info object
+                    BeatmapId = beatmapId,
+                    MapHash = mapHash, // Add the map hash for reliable identification
+                    SongTitle = _currentBeatmap.Title,
+                    SongArtist = _currentBeatmap.Artist,
+                    
+                    // Additional beatmap info if available
+                    Difficulty = _currentBeatmap.Version,
+                    
+                    // Get beatmap set ID if available
+                    BeatmapSetId = GetCurrentBeatmapSetId(),
+                    
+                    // Total notes count
+                    TotalNotes = _totalNotes,
+                    
+                    // Calculate hit statistics
+                    PerfectHits = CountHitsByAccuracy(0.95, 1.0),
+                    GreatHits = CountHitsByAccuracy(0.8, 0.95),
+                    GoodHits = CountHitsByAccuracy(0.6, 0.8),
+                    OkHits = CountHitsByAccuracy(0, 0.6),
+                    
+                    // Calculate miss count
+                    MissCount = _noteHits.Count >= _totalNotes ? 0 : _totalNotes - _noteHits.Count,
+                    
+                    // Calculate average deviation
+                    AverageDeviation = _noteHits.Count > 0 ? _noteHits.Average(h => h.Deviation) : 0
+                };
+                
+                // Save the score using the score service
+                _scoreService.SaveScore(scoreData);
+                
+                Console.WriteLine($"Score saved for {_username} on {_currentBeatmap.Title} (Hash: {mapHash})");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error saving score: {ex.Message}");
+            }
+        }
+        
+        // Helper method to get the current beatmap ID that matches the one used in the menu
+        private string GetCurrentBeatmapId()
+        {
+            if (_availableBeatmapSets != null && _selectedSongIndex >= 0 && 
+                _selectedDifficultyIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count)
+            {
+                var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+                if (_selectedDifficultyIndex < currentMapset.Beatmaps.Count)
+                {
+                    return currentMapset.Beatmaps[_selectedDifficultyIndex].Id;
+                }
+            }
+            
+            // Fallback to the beatmap ID from the current beatmap if available
+            return _currentBeatmap?.Id ?? string.Empty;
+        }
+        
+        // Helper method to get the current beatmap set ID
+        private string GetCurrentBeatmapSetId()
+        {
+            if (_availableBeatmapSets != null && _selectedSongIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count)
+            {
+                return _availableBeatmapSets[_selectedSongIndex].Id;
+            }
+            return string.Empty;
+        }
+        
+        // Helper method to count hits within an accuracy range
+        private int CountHitsByAccuracy(double minAccuracy, double maxAccuracy)
+        {
+            if (_noteHits.Count == 0)
+                return 0;
+                
+            int count = 0;
+            
+            foreach (var hit in _noteHits)
+            {
+                double timeDiff = Math.Abs(hit.Deviation);
+                double hitAccuracy = 1.0 - (timeDiff / _hitWindowMs);
+                
+                if (hitAccuracy >= minAccuracy && hitAccuracy < maxAccuracy)
+                {
+                    count++;
+                }
+            }
+            
+            return count;
+        }
+        
+        // Helper method to get the current map hash
+        private string GetCurrentMapHash()
+        {
+            // First try to get it from the current beatmap
+            if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.MapHash))
+            {
+                return _currentBeatmap.MapHash;
+            }
+            
+            // If not available directly, try to calculate it from the file
+            if (_availableBeatmapSets != null && _selectedSongIndex >= 0 && 
+                _selectedDifficultyIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count)
+            {
+                var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+                if (_selectedDifficultyIndex < currentMapset.Beatmaps.Count)
+                {
+                    string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
+                    return _beatmapService.CalculateBeatmapHash(beatmapPath);
+                }
+            }
+            
+            return string.Empty;
         }
         
         public void Dispose()

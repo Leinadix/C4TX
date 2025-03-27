@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using Catch3K.SDL.Models;
 
 namespace Catch3K.SDL.Services
@@ -315,6 +317,33 @@ namespace Catch3K.SDL.Services
                 .ToList();
 
             return convertedBeatmap;
+        }
+
+        // Calculate SHA256 hash of a beatmap file for reliable identification
+        public string CalculateBeatmapHash(string beatmapPath)
+        {
+            try
+            {
+                if (!File.Exists(beatmapPath))
+                {
+                    Console.WriteLine($"Cannot calculate hash: File not found at {beatmapPath}");
+                    return string.Empty;
+                }
+                
+                using (var sha256 = SHA256.Create())
+                {
+                    using (var stream = File.OpenRead(beatmapPath))
+                    {
+                        var hashBytes = sha256.ComputeHash(stream);
+                        return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error calculating beatmap hash: {ex.Message}");
+                return string.Empty;
+            }
         }
     }
 } 

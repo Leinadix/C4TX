@@ -14,6 +14,7 @@ namespace Catch3K.SDL.Models
         public List<HitObject> HitObjects { get; set; } = new List<HitObject>();
         public int KeyCount { get; set; }
         public double Length { get; set; } // in milliseconds
+        public string MapHash { get; set; } = string.Empty; // SHA256 hash of the map file
         
         public Beatmap()
         {
