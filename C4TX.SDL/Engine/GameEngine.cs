@@ -140,6 +140,10 @@ namespace C4TX.SDL.Engine
         private int _selectedDifficultyIndex = 0;
         private bool _isSelectingDifficulty = false;
         
+        // New properties for score selection
+        private bool _isScoreSectionFocused = false;
+        private int _selectedScoreIndex = 0;
+        
         // Settings variables
         private int _currentSettingIndex = 0;
         private double _playfieldWidthPercentage = 0.5; // 50% of window width
@@ -166,6 +170,12 @@ namespace C4TX.SDL.Engine
         private List<(double NoteTime, double HitTime, double Deviation)> _noteHits = new List<(double, double, double)>();
         private double _songEndTime = 0;
         private bool _hasShownResults = false;
+        
+        // For score replay and viewing stored replays
+        private ScoreData? _selectedScore = null;
+        
+        // For results screen accuracy model switching
+        private AccuracyModel _resultScreenAccuracyModel = AccuracyModel.Linear;
         
         private string _previewedBeatmapPath = string.Empty; // Track which beatmap is being previewed
         private bool _isPreviewPlaying = false; // Track if preview is currently playing
@@ -623,6 +633,22 @@ namespace C4TX.SDL.Engine
         // Start the game
         public void Start()
         {
+            // Reset various stats
+            _score = 0;
+            _combo = 0;
+            _maxCombo = 0;
+            _totalAccuracy = 0;
+            _totalNotes = 0;
+            _currentAccuracy = 0;
+            _activeNotes.Clear();
+            _noteHits.Clear();
+            _hitEffects.Clear();
+            _hasShownResults = false;
+            _selectedScore = null;
+            
+            // Reset the result screen accuracy model to match the current game setting
+            _resultScreenAccuracyModel = _accuracyModel;
+            
             // Stop any audio preview that might be playing
             StopAudioPreview();
             
@@ -673,26 +699,6 @@ namespace C4TX.SDL.Engine
             _gameTimer.Reset();
             _gameTimer.Start();
             _currentState = GameState.Playing;
-            
-            // Reset results data
-            _noteHits.Clear();
-            _hasShownResults = false;
-            
-            // Reset game metrics
-            _score = 0;
-            _combo = 0;
-            _maxCombo = 0;
-            _totalAccuracy = 0;
-            _totalNotes = 0;
-            _currentAccuracy = 0;
-            _activeNotes.Clear();
-            _hitEffects.Clear();
-            
-            // Reset key states
-            for (int i = 0; i < 4; i++)
-            {
-                _keyStates[i] = 0;
-            }
             
             // Set song end time (use the last note's time + 5 seconds)
             if (_currentBeatmap.HitObjects.Count > 0)
@@ -1025,119 +1031,240 @@ namespace C4TX.SDL.Engine
                 }
                 
                 // Menu navigation for new UI layout
-                if (scancode == SDL_Scancode.SDL_SCANCODE_UP)
+                if (_isScoreSectionFocused)
                 {
-                    // Up key moves to previous song
-                    if (_selectedSongIndex > 0)
+                    // Handle input when the score section is focused
+                    if (scancode == SDL_Scancode.SDL_SCANCODE_TAB)
                     {
-                        _selectedSongIndex--;
-                        _selectedDifficultyIndex = 0; // Reset difficulty selection
-                        // Load first difficulty of this song
-                        if (_availableBeatmapSets != null && 
-                            _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
+                        // TAB switches focus back to map selection
+                        _isScoreSectionFocused = false;
+                        return;
+                    }
+                    else if (scancode == SDL_Scancode.SDL_SCANCODE_UP)
+                    {
+                        // Move up in the scores list
+                        if (_selectedScoreIndex > 0)
                         {
-                            string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[0].Path;
-                            LoadBeatmap(beatmapPath);
+                            _selectedScoreIndex--;
+                        }
+                        return;
+                    }
+                    else if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
+                    {
+                        // Try to get scores for the current map
+                        string mapHash = string.Empty;
+                        if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.MapHash))
+                        {
+                            mapHash = _currentBeatmap.MapHash;
+                        }
+                        else if (_availableBeatmapSets != null && _selectedSongIndex < _availableBeatmapSets.Count &&
+                                _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+                        {
+                            var beatmapInfo = _availableBeatmapSets[_selectedSongIndex].Beatmaps[_selectedDifficultyIndex];
+                            mapHash = _beatmapService.CalculateBeatmapHash(beatmapInfo.Path);
+                        }
+                        
+                        // If we have a hash, check the cached scores
+                        if (!string.IsNullOrEmpty(mapHash))
+                        {
+                            if (mapHash != _cachedScoreMapHash || !_hasCheckedCurrentHash)
+                            {
+                                _cachedScores = _scoreService.GetBeatmapScoresByHash(_username, mapHash);
+                                _cachedScoreMapHash = mapHash;
+                                _hasCheckedCurrentHash = true;
+                            }
                             
-                            // Clear cached scores when difficulty changes
-                            _cachedScoreMapHash = string.Empty;
-                            _cachedScores.Clear();
-                            _hasCheckedCurrentHash = false;
+                            // Only move down if there are more scores
+                            int maxScores = _cachedScores.Count;
+                            if (_selectedScoreIndex < maxScores - 1)
+                            {
+                                _selectedScoreIndex++;
+                            }
+                        }
+                        return;
+                    }
+                    else if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
+                    {
+                        // Enter on a score loads the results screen for that score
+                        if (_cachedScores != null && _cachedScores.Count > 0 && 
+                            _selectedScoreIndex < _cachedScores.Count)
+                        {
+                            // Get the selected score
+                            var scores = _cachedScores.OrderByDescending(s => s.Accuracy).ToList();
+                            _selectedScore = scores[_selectedScoreIndex];
                             
-                            // Preview the audio for this beatmap
-                            PreviewBeatmapAudio(beatmapPath);
+                            // Set the game state values to match the selected score
+                            _score = _selectedScore.Score;
+                            _maxCombo = _selectedScore.MaxCombo;
+                            _currentAccuracy = _selectedScore.Accuracy;
+                            
+                            // Clear the current play's note hits since we're viewing a replay
+                            _noteHits.Clear();
+                            
+                            // Transition to results screen with this score's data
+                            _currentState = GameState.Results;
+                            _hasShownResults = true;
+                        }
+                        return;
+                    }
+                }
+                else // Map selection focused
+                {
+                    if (scancode == SDL_Scancode.SDL_SCANCODE_TAB)
+                    {
+                        // Only allow tab to scores if there are scores available
+                        if (!string.IsNullOrWhiteSpace(_username) && _currentBeatmap != null)
+                        {
+                            string mapHash = string.Empty;
+                            
+                            if (!string.IsNullOrEmpty(_currentBeatmap.MapHash))
+                            {
+                                mapHash = _currentBeatmap.MapHash;
+                            }
+                            else
+                            {
+                                // Calculate hash if needed
+                                var beatmapInfo = GetSelectedBeatmapInfo();
+                                if (beatmapInfo != null)
+                                {
+                                    mapHash = _beatmapService.CalculateBeatmapHash(beatmapInfo.Path);
+                                }
+                            }
+                            
+                            if (!string.IsNullOrEmpty(mapHash))
+                            {
+                                // Get scores for this beatmap using the hash
+                                if (mapHash != _cachedScoreMapHash || !_hasCheckedCurrentHash)
+                                {
+                                    _cachedScores = _scoreService.GetBeatmapScoresByHash(_username, mapHash);
+                                    _cachedScoreMapHash = mapHash;
+                                    _hasCheckedCurrentHash = true;
+                                }
+                                
+                                // Only switch focus if there are scores
+                                if (_cachedScores.Count > 0)
+                                {
+                                    _isScoreSectionFocused = true;
+                                    _selectedScoreIndex = 0;
+                                    return;
+                                }
+                            }
                         }
                     }
-                }
-                else if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
-                {
-                    // Down key moves to next song
-                    if (_availableBeatmapSets != null && _selectedSongIndex < _availableBeatmapSets.Count - 1)
+                    else if (scancode == SDL_Scancode.SDL_SCANCODE_UP)
                     {
-                        _selectedSongIndex++;
-                        _selectedDifficultyIndex = 0; // Reset difficulty selection
-                        // Load first difficulty of this song
-                        if (_availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
+                        // Up key moves to previous song
+                        if (_selectedSongIndex > 0)
                         {
-                            string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[0].Path;
-                            LoadBeatmap(beatmapPath);
-                            
-                            // Clear cached scores when difficulty changes
-                            _cachedScoreMapHash = string.Empty;
-                            _cachedScores.Clear();
-                            _hasCheckedCurrentHash = false;
-                            
-                            // Preview the audio for this beatmap
-                            PreviewBeatmapAudio(beatmapPath);
+                            _selectedSongIndex--;
+                            _selectedDifficultyIndex = 0; // Reset difficulty selection
+                            // Load first difficulty of this song
+                            if (_availableBeatmapSets != null && 
+                                _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
+                            {
+                                string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[0].Path;
+                                LoadBeatmap(beatmapPath);
+                                
+                                // Clear cached scores when difficulty changes
+                                _cachedScoreMapHash = string.Empty;
+                                _cachedScores.Clear();
+                                _hasCheckedCurrentHash = false;
+                                
+                                // Preview the audio for this beatmap
+                                PreviewBeatmapAudio(beatmapPath);
+                            }
                         }
                     }
-                }
-                else if (scancode == SDL_Scancode.SDL_SCANCODE_LEFT)
-                {
-                    // Left key selects previous difficulty of current song
-                    if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
-                        _selectedSongIndex < _availableBeatmapSets.Count)
+                    else if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
                     {
-                        var currentMapset = _availableBeatmapSets[_selectedSongIndex];
-                        if (_selectedDifficultyIndex > 0)
+                        // Down key moves to next song
+                        if (_availableBeatmapSets != null && _selectedSongIndex < _availableBeatmapSets.Count - 1)
                         {
-                            _selectedDifficultyIndex--;
-                            // Load the selected difficulty
-                            string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
-                            LoadBeatmap(beatmapPath);
-                            
-                            // Clear cached scores when difficulty changes
-                            _cachedScoreMapHash = string.Empty;
-                            _cachedScores.Clear();
-                            _hasCheckedCurrentHash = false;
-                            
-                            // Preview the audio for this beatmap
-                            PreviewBeatmapAudio(beatmapPath);
+                            _selectedSongIndex++;
+                            _selectedDifficultyIndex = 0; // Reset difficulty selection
+                            // Load first difficulty of this song
+                            if (_availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
+                            {
+                                string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[0].Path;
+                                LoadBeatmap(beatmapPath);
+                                
+                                // Clear cached scores when difficulty changes
+                                _cachedScoreMapHash = string.Empty;
+                                _cachedScores.Clear();
+                                _hasCheckedCurrentHash = false;
+                                
+                                // Preview the audio for this beatmap
+                                PreviewBeatmapAudio(beatmapPath);
+                            }
                         }
                     }
-                }
-                else if (scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)
-                {
-                    // Right key selects next difficulty of current song
-                    if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
-                        _selectedSongIndex < _availableBeatmapSets.Count)
+                    else if (scancode == SDL_Scancode.SDL_SCANCODE_LEFT)
                     {
-                        var currentMapset = _availableBeatmapSets[_selectedSongIndex];
-                        if (_selectedDifficultyIndex < currentMapset.Beatmaps.Count - 1)
+                        // Left key selects previous difficulty of current song
+                        if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
+                            _selectedSongIndex < _availableBeatmapSets.Count)
                         {
-                            _selectedDifficultyIndex++;
-                            // Load the selected difficulty
-                            string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
-                            LoadBeatmap(beatmapPath);
-                            
-                            // Clear cached scores when difficulty changes
-                            _cachedScoreMapHash = string.Empty;
-                            _cachedScores.Clear();
-                            _hasCheckedCurrentHash = false;
-                            
-                            // Preview the audio for this beatmap
-                            PreviewBeatmapAudio(beatmapPath);
+                            var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+                            if (_selectedDifficultyIndex > 0)
+                            {
+                                _selectedDifficultyIndex--;
+                                // Load the selected difficulty
+                                string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
+                                LoadBeatmap(beatmapPath);
+                                
+                                // Clear cached scores when difficulty changes
+                                _cachedScoreMapHash = string.Empty;
+                                _cachedScores.Clear();
+                                _hasCheckedCurrentHash = false;
+                                
+                                // Preview the audio for this beatmap
+                                PreviewBeatmapAudio(beatmapPath);
+                            }
                         }
                     }
-                }
-                // Enter to start the game
-                else if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
-                {
-                    if (!string.IsNullOrWhiteSpace(_username))
+                    else if (scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)
                     {
-                        Start();
+                        // Right key selects next difficulty of current song
+                        if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
+                            _selectedSongIndex < _availableBeatmapSets.Count)
+                        {
+                            var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+                            if (_selectedDifficultyIndex < currentMapset.Beatmaps.Count - 1)
+                            {
+                                _selectedDifficultyIndex++;
+                                // Load the selected difficulty
+                                string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
+                                LoadBeatmap(beatmapPath);
+                                
+                                // Clear cached scores when difficulty changes
+                                _cachedScoreMapHash = string.Empty;
+                                _cachedScores.Clear();
+                                _hasCheckedCurrentHash = false;
+                                
+                                // Preview the audio for this beatmap
+                                PreviewBeatmapAudio(beatmapPath);
+                            }
+                        }
                     }
-                    else
+                    // Enter to start the game
+                    else if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
                     {
-                        // If no username, start username editing
-                        _isEditingUsername = true;
+                        if (!string.IsNullOrWhiteSpace(_username))
+                        {
+                            Start();
+                        }
+                        else
+                        {
+                            // If no username, start username editing
+                            _isEditingUsername = true;
+                        }
                     }
-                }
-                
-                // Escape to exit
-                else if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
-                {
-                    _isRunning = false;
+                    
+                    // Escape to exit
+                    else if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
+                    {
+                        _isRunning = false;
+                    }
                 }
             }
             else if (_currentState == GameState.Results)
@@ -1149,6 +1276,19 @@ namespace C4TX.SDL.Engine
                 else if (scancode == SDL_Scancode.SDL_SCANCODE_SPACE)
                 {
                     Start();
+                }
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_LEFT)
+                {
+                    // Cycle to previous accuracy model
+                    int modelCount = Enum.GetValues(typeof(AccuracyModel)).Length;
+                    _resultScreenAccuracyModel = (AccuracyModel)((_resultScreenAccuracyModel == 0) ? 
+                        modelCount - 1 : (int)_resultScreenAccuracyModel - 1);
+                }
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)
+                {
+                    // Cycle to next accuracy model
+                    int modelCount = Enum.GetValues(typeof(AccuracyModel)).Length;
+                    _resultScreenAccuracyModel = (AccuracyModel)(((int)_resultScreenAccuracyModel + 1) % modelCount);
                 }
             }
             else if (_currentState == GameState.Settings)
@@ -2105,13 +2245,59 @@ namespace C4TX.SDL.Engine
             // Draw title
             RenderText("Results", _windowWidth / 2, 50, _textColor, true, true);
             
+            // Check if we're displaying a replay or live results
+            bool isReplay = _noteHits.Count == 0 && _selectedScore != null && _selectedScore.NoteHits.Count > 0;
+            
+            // Use the proper data source based on whether this is a replay or live results
+            List<(double NoteTime, double HitTime, double Deviation)> hitData;
+            if (isReplay && _selectedScore != null)
+            {
+                // Extract note hit data from the selected score
+                hitData = _selectedScore.NoteHits.Select(nh => (nh.NoteTime, nh.HitTime, nh.Deviation)).ToList();
+                
+                // Draw replay indicator
+                RenderText("REPLAY", _windowWidth / 2, 80, _accentColor, false, true);
+            }
+            else
+            {
+                // Use current session data
+                hitData = _noteHits;
+            }
+            
+            // Get the current model name
+            string accuracyModelName = _resultScreenAccuracyModel.ToString();
+            
+            // Calculate accuracy based on the selected model
+            double displayAccuracy = _currentAccuracy; // Default to current accuracy
+            
+            if (hitData.Count > 0)
+            {
+                // Create temporary accuracy service with the selected model
+                var tempAccuracyService = new AccuracyService(_resultScreenAccuracyModel);
+                
+                // Set the hit window explicitly
+                tempAccuracyService.SetHitWindow(_hitWindowMs);
+                
+                // Recalculate accuracy using the selected model
+                double totalAccuracy = 0;
+                foreach (var hit in hitData)
+                {
+                    // Calculate accuracy for this hit using the selected model
+                    double hitAccuracy = tempAccuracyService.CalculateAccuracy(Math.Abs(hit.Deviation));
+                    totalAccuracy += hitAccuracy;
+                }
+                
+                // Calculate average accuracy
+                displayAccuracy = totalAccuracy / hitData.Count;
+            }
+            
             // Draw overall stats with descriptions
             RenderText($"Score: {_score}", _windowWidth / 2, 100, _textColor, false, true);
             RenderText($"Max Combo: {_maxCombo}x", _windowWidth / 2, 130, _textColor, false, true);
-            RenderText($"Accuracy: {_currentAccuracy:P2}", _windowWidth / 2, 160, _textColor, false, true);
+            RenderText($"Accuracy: {displayAccuracy:P2} (Model: {accuracyModelName})", _windowWidth / 2, 160, _textColor, false, true);
             
             // Draw graph
-            if (_noteHits.Count > 0)
+            if (hitData.Count > 0)
             {
                 // Calculate graph dimensions
                 int graphWidth = (int)(_windowWidth * 0.8);
@@ -2161,12 +2347,15 @@ namespace C4TX.SDL.Engine
                 int centerY = graphY + graphHeight/2;
                 SDL_RenderDrawLine(_renderer, graphX, centerY, graphX + graphWidth, centerY);
                 
+                // Draw accuracy model visualization
+                DrawAccuracyModelVisualization(graphX, graphY, graphWidth, graphHeight, centerY);
+                
                 // Draw hit points with color coding
-                double maxTime = _noteHits.Max(h => h.NoteTime);
-                double minTime = _noteHits.Min(h => h.NoteTime);
+                double maxTime = hitData.Max(h => h.NoteTime);
+                double minTime = hitData.Min(h => h.NoteTime);
                 double timeRange = maxTime - minTime;
                 
-                foreach (var hit in _noteHits)
+                foreach (var hit in hitData)
                 {
                     // Calculate x position based on note time
                     double timeProgress = (hit.NoteTime - minTime) / timeRange;
@@ -2213,6 +2402,7 @@ namespace C4TX.SDL.Engine
                         w = 4,
                         h = 4
                     };
+                    
                     SDL_RenderFillRect(_renderer, ref pointRect);
                 }
                 
@@ -2221,19 +2411,319 @@ namespace C4TX.SDL.Engine
                 RenderText("Early hits (red) | Perfect hits (white) | Late hits (green)", graphX + graphWidth/2, graphY - 5, _textColor, false, true);
                 
                 // Draw statistics summary
-                var earlyHits = _noteHits.Count(h => h.Deviation < 0);
-                var lateHits = _noteHits.Count(h => h.Deviation > 0);
-                var perfectHits = _noteHits.Count(h => h.Deviation == 0);
-                var avgDeviation = _noteHits.Average(h => h.Deviation);
+                var earlyHits = hitData.Count(h => h.Deviation < 0);
+                var lateHits = hitData.Count(h => h.Deviation > 0);
+                var perfectHits = hitData.Count(h => h.Deviation == 0);
+                var avgDeviation = hitData.Average(h => h.Deviation);
                 
                 int statsY = graphY + graphHeight + 40;
                 RenderText($"Early hits: {earlyHits} | Late hits: {lateHits} | Perfect hits: {perfectHits}", _windowWidth / 2, statsY, _textColor, false, true);
                 RenderText($"Average deviation: {avgDeviation:F1}ms", _windowWidth / 2, statsY + 25, _textColor, false, true);
+                
+                // Add accuracy model switch instructions
+                RenderText("Press LEFT/RIGHT to change accuracy model", _windowWidth / 2, statsY + 55, _accentColor, false, true);
             }
             
-            // Draw instructions
-            RenderText("Press Enter to return to menu", _windowWidth / 2, _windowHeight - 60, _textColor, false, true);
-            RenderText("Press Space to retry", _windowWidth / 2, _windowHeight - 30, _textColor, false, true);
+            // Draw hit distribution on the right side
+            int distributionX = (_windowWidth * 3) / 4;
+            int distributionY = _windowWidth / 4;
+            
+            // Draw instruction
+            RenderText("Press ENTER to return to menu", _windowWidth / 2, _windowHeight - 40, _accentColor, false, true);
+            RenderText("Press SPACE to retry", _windowWidth / 2, _windowHeight - 70, _accentColor, false, true);
+        }
+        
+        // Draw visualization of the current accuracy model
+        private void DrawAccuracyModelVisualization(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        {
+            // Set up visualization properties
+            SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
+            
+            // Draw judgment boundary lines based on the current model
+            switch (_resultScreenAccuracyModel)
+            {
+                case AccuracyModel.Linear:
+                    DrawLinearJudgmentBoundaries(graphX, graphY, graphWidth, graphHeight, centerY);
+                    break;
+                case AccuracyModel.Quadratic:
+                    DrawQuadraticJudgmentBoundaries(graphX, graphY, graphWidth, graphHeight, centerY);
+                    break;
+                case AccuracyModel.Stepwise:
+                    DrawStepwiseJudgmentBoundaries(graphX, graphY, graphWidth, graphHeight, centerY);
+                    break;
+                case AccuracyModel.Exponential:
+                    DrawExponentialJudgmentBoundaries(graphX, graphY, graphWidth, graphHeight, centerY);
+                    break;
+                case AccuracyModel.osuOD8:
+                    DrawOsuOD8JudgmentBoundaries(graphX, graphY, graphWidth, graphHeight, centerY);
+                    break;
+            }
+        }
+        
+        // Draw Linear model judgment boundaries
+        private void DrawLinearJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        {
+            // Linear model judgment thresholds (as percentage of hit window)
+            double[] thresholds = {
+                0.05,  // 95% accuracy - Marvelous threshold
+                0.20,  // 80% accuracy - Perfect threshold
+                0.40,  // 60% accuracy - Great threshold 
+                0.60,  // 40% accuracy - Good threshold
+                0.80   // 20% accuracy - OK threshold
+            };
+            
+            string[] judgments = {
+                "MARVELOUS (95%+)",
+                "PERFECT (80-95%)",
+                "GREAT (60-80%)",
+                "GOOD (40-60%)",
+                "OK (20-40%)",
+                "MISS (<20%)"
+            };
+            
+            SDL_Color[] colors = {
+                new SDL_Color { r = 255, g = 255, b = 255, a = 100 }, // White - Marvelous
+                new SDL_Color { r = 255, g = 255, b = 100, a = 100 }, // Yellow - Perfect
+                new SDL_Color { r = 100, g = 255, b = 100, a = 100 }, // Green - Great
+                new SDL_Color { r = 100, g = 100, b = 255, a = 100 }, // Blue - Good
+                new SDL_Color { r = 255, g = 100, b = 100, a = 100 }  // Red - OK
+            };
+            
+            // Draw judgment boundaries
+            for (int i = 0; i < thresholds.Length; i++)
+            {
+                // Calculate pixel positions for positive/negative thresholds
+                int pixelOffset = (int)(thresholds[i] * _hitWindowMs * graphHeight/2 / _hitWindowMs);
+                
+                // Draw positive threshold line (late hits)
+                int posY = centerY - pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+                
+                // Draw judgment label on right side
+                RenderText(judgments[i], graphX + graphWidth + 10, posY, _textColor, false, false);
+                
+                // Draw negative threshold line (early hits)
+                int negY = centerY + pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+            }
+            
+            // Draw explanation
+            RenderText("Linear: Equal accuracy weight across entire hit window", graphX + graphWidth/2, graphY + graphHeight + 70, _textColor, false, true);
+        }
+        
+        // Draw Quadratic model judgment boundaries
+        private void DrawQuadraticJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        {
+            // Quadratic model has different judgment thresholds (uses normalized = sqrt(accuracy))
+            double[] thresholds = {
+                0.22,  // sqrt(0.95) ≈ 0.22 - Marvelous threshold
+                0.32,  // sqrt(0.90) ≈ 0.32 - Perfect threshold
+                0.55,  // sqrt(0.70) ≈ 0.55 - Great threshold
+                0.71,  // sqrt(0.50) ≈ 0.71 - Good threshold
+                1.0    // Any hit - OK threshold
+            };
+            
+            string[] judgments = {
+                "MARVELOUS (95%+)",
+                "PERFECT (90-95%)",
+                "GREAT (70-90%)",
+                "GOOD (50-70%)",
+                "OK (>0%)",
+                "MISS (0%)"
+            };
+            
+            SDL_Color[] colors = {
+                new SDL_Color { r = 255, g = 255, b = 255, a = 100 }, // White - Marvelous
+                new SDL_Color { r = 255, g = 255, b = 100, a = 100 }, // Yellow - Perfect
+                new SDL_Color { r = 100, g = 255, b = 100, a = 100 }, // Green - Great
+                new SDL_Color { r = 100, g = 100, b = 255, a = 100 }, // Blue - Good
+                new SDL_Color { r = 255, g = 100, b = 100, a = 100 }  // Red - OK
+            };
+            
+            // Draw judgment boundaries
+            for (int i = 0; i < thresholds.Length; i++)
+            {
+                // Calculate pixel positions for positive/negative thresholds 
+                int pixelOffset = (int)(thresholds[i] * graphHeight/2);
+                
+                // Draw positive threshold line (late hits)
+                int posY = centerY - pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+                
+                // Draw judgment label on right side
+                RenderText(judgments[i], graphX + graphWidth + 10, posY, _textColor, false, false);
+                
+                // Draw negative threshold line (early hits)
+                int negY = centerY + pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+            }
+            
+            // Draw explanation
+            RenderText("Quadratic: Accuracy decreases more rapidly as timing deviation increases", graphX + graphWidth/2, graphY + graphHeight + 70, _textColor, false, true);
+        }
+        
+        // Draw Stepwise model judgment boundaries 
+        private void DrawStepwiseJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        {
+            // Stepwise model has exact judgment thresholds (percentage of hit window)
+            double[] thresholds = {
+                0.2,  // Perfect: 0-20% of hit window
+                0.5,  // Great: 20-50% of hit window
+                0.8,  // Good: 50-80% of hit window
+                1.0   // OK: 80-100% of hit window
+            };
+            
+            string[] judgments = {
+                "MARVELOUS & PERFECT (up to 20%)",
+                "GREAT (20-50%)",
+                "GOOD (50-80%)",
+                "OK (80-100%)",
+                "MISS (>100%)"
+            };
+            
+            SDL_Color[] colors = {
+                new SDL_Color { r = 255, g = 255, b = 255, a = 100 }, // White - Marvelous/Perfect
+                new SDL_Color { r = 100, g = 255, b = 100, a = 100 }, // Green - Great
+                new SDL_Color { r = 255, g = 255, b = 0, a = 100 },   // Yellow - Good
+                new SDL_Color { r = 255, g = 100, b = 0, a = 100 }    // Orange - OK
+            };
+            
+            // Draw judgment boundaries
+            for (int i = 0; i < thresholds.Length; i++)
+            {
+                // Calculate pixel positions (scaled to hit window)
+                int pixelOffset = (int)(thresholds[i] * _hitWindowMs * graphHeight/2 / _hitWindowMs);
+                
+                // Draw positive threshold line (late hits)
+                int posY = centerY - pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+                
+                // Draw judgment label on right side
+                RenderText(judgments[i], graphX + graphWidth + 10, posY, _textColor, false, false);
+                
+                // Draw negative threshold line (early hits)
+                int negY = centerY + pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+            }
+            
+            // Draw explanation
+            RenderText("Stepwise: Discrete accuracy bands with clear thresholds", graphX + graphWidth/2, graphY + graphHeight + 70, _textColor, false, true);
+        }
+        
+        // Draw Exponential model judgment boundaries
+        private void DrawExponentialJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        {
+            // Exponential model judgment thresholds
+            // Solving for Math.Exp(-5.0 * x) = threshold
+            // x = -ln(threshold) / 5.0
+            double[] accuracyThresholds = { 0.90, 0.85, 0.65, 0.4, 0.0 };
+            double[] thresholds = new double[accuracyThresholds.Length];
+            
+            for (int i = 0; i < accuracyThresholds.Length; i++)
+            {
+                // Calculate normalized position where accuracy falls below threshold
+                if (accuracyThresholds[i] > 0)
+                    thresholds[i] = -Math.Log(accuracyThresholds[i]) / 5.0;
+                else
+                    thresholds[i] = 1.0;
+            }
+            
+            string[] judgments = {
+                "MARVELOUS (90%+)",
+                "PERFECT (85-90%)",
+                "GREAT (65-85%)",
+                "GOOD (40-65%)",
+                "OK (>0%)",
+                "MISS (0%)"
+            };
+            
+            SDL_Color[] colors = {
+                new SDL_Color { r = 255, g = 255, b = 255, a = 100 }, // White - Marvelous
+                new SDL_Color { r = 255, g = 255, b = 100, a = 100 }, // Yellow - Perfect
+                new SDL_Color { r = 100, g = 255, b = 100, a = 100 }, // Green - Great
+                new SDL_Color { r = 100, g = 100, b = 255, a = 100 }, // Blue - Good
+                new SDL_Color { r = 255, g = 100, b = 100, a = 100 }  // Red - OK
+            };
+            
+            // Draw judgment boundaries
+            for (int i = 0; i < thresholds.Length; i++)
+            {
+                // Scale normalized threshold to pixel position
+                int pixelOffset = (int)(thresholds[i] * graphHeight/2);
+                
+                // Draw positive threshold line (late hits)
+                int posY = centerY - pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+                
+                // Draw judgment label on right side
+                RenderText(judgments[i], graphX + graphWidth + 10, posY, _textColor, false, false);
+                
+                // Draw negative threshold line (early hits)
+                int negY = centerY + pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+            }
+            
+            // Draw explanation
+            RenderText("Exponential: Very precise at center, steep drop-off at edges", graphX + graphWidth/2, graphY + graphHeight + 70, _textColor, false, true);
+        }
+        
+        // Draw osuOD8 model judgment boundaries
+        private void DrawOsuOD8JudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        {
+            // osu! OD8 model has specific ms thresholds
+            double[] thresholds = { 16.0, 40.0, 73.0, 103.0, 133.0 };
+            double[] values = { 305.0/305.0, 300.0/305.0, 200.0/305.0, 100.0/305.0, 50.0/305.0, 0.0 };
+            
+            string[] judgments = {
+                "MARVELOUS (±16ms)",
+                "PERFECT (±40ms)",
+                "GREAT (±73ms)",
+                "GOOD (±103ms)",
+                "OK (±133ms)",
+                "MISS (>±133ms)"
+            };
+            
+            SDL_Color[] colors = {
+                new SDL_Color { r = 255, g = 255, b = 255, a = 100 }, // White - Marvelous 
+                new SDL_Color { r = 230, g = 230, b = 80, a = 100 },  // Yellow - Perfect
+                new SDL_Color { r = 80, g = 230, b = 80, a = 100 },   // Green - Great
+                new SDL_Color { r = 80, g = 180, b = 230, a = 100 },  // Blue - Good
+                new SDL_Color { r = 230, g = 80, b = 80, a = 100 }    // Red - OK
+            };
+            
+            // Draw judgment boundaries
+            for (int i = 0; i < thresholds.Length; i++)
+            {
+                // Calculate pixel positions (scale to graph height)
+                int pixelOffset = (int)(thresholds[i] * graphHeight/2 / _hitWindowMs);
+                
+                // Ensure boundaries stay within graph
+                pixelOffset = Math.Min(pixelOffset, graphHeight/2);
+                
+                // Draw positive threshold line (late hits)
+                int posY = centerY - pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+                
+                // Draw judgment label on right side
+                RenderText(judgments[i], graphX + graphWidth + 10, posY, _textColor, false, false);
+                
+                // Draw negative threshold line (early hits)
+                int negY = centerY + pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+            }
+            
+            // Draw explanation
+            RenderText("osu! OD8: Fixed millisecond timing windows with specific thresholds", graphX + graphWidth/2, graphY + graphHeight + 70, _textColor, false, true);
         }
         
         // Toggle fullscreen mode
@@ -2403,10 +2893,38 @@ namespace C4TX.SDL.Engine
                     AverageDeviation = _noteHits.Count > 0 ? _noteHits.Average(h => h.Deviation) : 0
                 };
                 
+                // Add note hit timing data for replay/graph reconstruction
+                foreach (var hit in _noteHits)
+                {
+                    // Find the original hit object to get the column
+                    int column = 0;
+                    if (_currentBeatmap != null && _currentBeatmap.HitObjects != null)
+                    {
+                        // Find the closest hit object to this time
+                        var hitObject = _currentBeatmap.HitObjects
+                            .OrderBy(h => Math.Abs(h.StartTime - hit.NoteTime))
+                            .FirstOrDefault();
+                            
+                        if (hitObject != null)
+                        {
+                            column = hitObject.Column;
+                        }
+                    }
+                    
+                    scoreData.NoteHits.Add(new NoteHitData
+                    {
+                        NoteTime = hit.NoteTime,
+                        HitTime = hit.HitTime,
+                        Deviation = hit.Deviation,
+                        Column = column
+                    });
+                }
+                
                 // Save the score using the score service
                 _scoreService.SaveScore(scoreData);
                 
-                Console.WriteLine($"Score saved for {_username} on {_currentBeatmap.Title} (Hash: {mapHash})");
+                Console.WriteLine($"Score saved for {_username} on {_currentBeatmap?.Title ?? "Unknown Map"} (Hash: {mapHash})");
+                Console.WriteLine($"Saved {scoreData.NoteHits.Count} note hit timestamps for replay reconstruction");
             }
             catch (Exception ex)
             {
@@ -3104,6 +3622,22 @@ namespace C4TX.SDL.Engine
                 {
                     var score = scores[i];
                     
+                    // Determine if this row is selected in the scores section
+                    bool isScoreSelected = _isScoreSectionFocused && i == _selectedScoreIndex;
+                    
+                    // Draw row background if selected
+                    if (isScoreSelected)
+                    {
+                        SDL_SetRenderDrawColor(_renderer, _primaryColor.r, _primaryColor.g, _primaryColor.b, 100);
+                        SDL_Rect rowBg = new SDL_Rect { 
+                            x = x + PANEL_PADDING - 5, 
+                            y = scoreY - 5, 
+                            w = width - (PANEL_PADDING * 2) + 10, 
+                            h = rowHeight + 4 
+                        };
+                        SDL_RenderFillRect(_renderer, ref rowBg);
+                    }
+                    
                     // Choose row color
                     SDL_Color rowColor;
                     if (i == 0)
@@ -3182,6 +3716,12 @@ namespace C4TX.SDL.Engine
                 _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
             {
                 instructions.Append("←→: Select Difficulty | ");
+            }
+            
+            // Add TAB instruction if there are scores available
+            if (_cachedScores != null && _cachedScores.Count > 0)
+            {
+                instructions.Append("TAB: Toggle Focus | ");
             }
             
             instructions.Append("Enter: Play | ");

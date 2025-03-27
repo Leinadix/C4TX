@@ -34,6 +34,9 @@ namespace C4TX.SDL.Models
         // Average deviation (early/late)
         public double AverageDeviation { get; set; }
         
+        // Note hit timing data for replay and graph reconstruction
+        public List<NoteHitData> NoteHits { get; set; } = new List<NoteHitData>();
+        
         // Constructor
         public ScoreData()
         {
@@ -46,5 +49,21 @@ namespace C4TX.SDL.Models
             // Format: MapHash_Score_Date.json
             return $"{MapHash}_{Score}_{DatePlayed:yyyyMMdd_HHmmss}.json";
         }
+    }
+    
+    // Class to store individual note hit data for replay
+    public class NoteHitData
+    {
+        // The time the note was supposed to be hit (from the beatmap)
+        public double NoteTime { get; set; }
+        
+        // The time the player actually hit the note
+        public double HitTime { get; set; }
+        
+        // The deviation (HitTime - NoteTime), positive = late, negative = early
+        public double Deviation { get; set; }
+        
+        // The lane/column of the note (0-3)
+        public int Column { get; set; }
     }
 } 
