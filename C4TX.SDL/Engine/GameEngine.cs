@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using C4TX.SDL.Models;
 using C4TX.SDL.Services;
-using NAudio.Wave;
-using NAudio.Vorbis;
 using SDL2;
 using static SDL2.SDL;
 using System.Text;
@@ -10,7 +8,8 @@ using System.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using NAudio.Wave.SampleProviders;
+using ManagedBass;
+using ManagedBass.Fx;
 using System.Threading.Tasks;
 
 namespace C4TX.SDL.Engine
@@ -32,12 +31,19 @@ namespace C4TX.SDL.Engine
         // Audio playback components
         private bool _audioEnabled = true;
         private string? _currentAudioPath;
-        private IWavePlayer? _audioPlayer;
-        private IWaveProvider? _audioFile;
-        private ISampleProvider? _sampleProvider;
-        private IDisposable? _audioReader;
+        // BASS audio variables
+        private int _audioStream = 0;
+        private int _mixerStream = 0;
         private bool _audioLoaded = false;
         private float _volume = 0.3f; // Default volume at 30% (will be scaled to 75%)
+        
+        // Rate control variables
+        private float _currentRate = 1.0f;
+        private const float MIN_RATE = 0.1f;
+        private const float MAX_RATE = 3.0f;
+        private const float RATE_STEP = 0.1f;
+        private double _rateChangeTime = 0;
+        private bool _showRateIndicator = false;
         
         // SDL related variables
         private IntPtr _window;
@@ -245,17 +251,108 @@ namespace C4TX.SDL.Engine
         {
             try
             {
-                _audioPlayer = new WaveOutEvent();
-                _audioPlayer.Volume = _volume; // Set initial volume
-                _audioPlayer.PlaybackStopped += (s, e) => 
+                // Initialize BASS
+                if (!Bass.Init())
                 {
-                    Console.WriteLine("Audio playback stopped");
-                };
+                    throw new Exception("BASS initialization failed");
+                }
+                
+                // Set initial volume
+                Bass.Volume = _volume;
+                
+                _audioLoaded = true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error initializing audio player: {ex.Message}");
-                _audioEnabled = false; // Disable audio if initialization fails
+                Console.WriteLine($"Error initializing audio: {ex.Message}");
+                _audioLoaded = false;
+            }
+        }
+        
+        private void TryLoadAudio()
+        {
+            try
+            {
+                // Check if we have a beatmap and an audio file
+                if (_currentBeatmap == null || string.IsNullOrEmpty(_currentBeatmap.AudioFilename))
+                {
+                    Console.WriteLine("No audio file specified in beatmap");
+                    return;
+                }
+                
+                // Get the directory of the beatmap file and find the audio file
+                string? beatmapDir = null;
+                var beatmapInfo = GetSelectedBeatmapInfo();
+                if (beatmapInfo != null)
+                {
+                    beatmapDir = Path.GetDirectoryName(beatmapInfo.Path);
+                }
+                
+                if (string.IsNullOrEmpty(beatmapDir))
+                {
+                    Console.WriteLine("Could not determine beatmap directory");
+                    return;
+                }
+                
+                string audioPath = Path.Combine(beatmapDir, _currentBeatmap.AudioFilename);
+                _currentAudioPath = audioPath;
+                
+                if (!File.Exists(audioPath))
+                {
+                    Console.WriteLine($"Audio file not found: {audioPath}");
+                    return;
+                }
+                
+                // Stop any existing audio first
+                StopAudio();
+                
+                // Free any existing stream
+                if (_mixerStream != 0)
+                {
+                    Bass.StreamFree(_mixerStream);
+                    _mixerStream = 0;
+                }
+                
+                if (_audioStream != 0)
+                {
+                    Bass.StreamFree(_audioStream);
+                    _audioStream = 0;
+                }
+                
+                // Create the stream with appropriate flags
+                _audioStream = Bass.CreateStream(audioPath, 0, 0, BassFlags.Decode);
+                
+                if (_audioStream == 0)
+                {
+                    Console.WriteLine($"Failed to create audio stream: {Bass.LastError}");
+                    return;
+                }
+                
+                // Create tempo stream with BassFx
+                _mixerStream = BassFx.TempoCreate(_audioStream, BassFlags.FxFreeSource);
+                
+                if (_mixerStream == 0)
+                {
+                    Console.WriteLine($"Failed to create tempo stream: {Bass.LastError}");
+                    Bass.StreamFree(_audioStream);
+                    _audioStream = 0;
+                    return;
+                }
+                
+                // Set initial volume
+                Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Volume, _volume);
+                
+                // Set the playback rate using tempo attributes
+                Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Tempo, (_currentRate - 1.0f) * 100);
+                
+                _audioLoaded = true;
+                
+                Console.WriteLine($"Audio loaded: {audioPath}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading audio: {ex.Message}");
+                _audioLoaded = false;
             }
         }
         
@@ -528,110 +625,6 @@ namespace C4TX.SDL.Engine
             }
         }
         
-        private void TryLoadAudio()
-        {
-            try
-            {
-                // Check if we have a beatmap and an audio file
-                if (_currentBeatmap == null || string.IsNullOrEmpty(_currentBeatmap.AudioFilename))
-                {
-                    Console.WriteLine("No audio file specified in beatmap");
-                    return;
-                }
-                
-                // Get the directory of the beatmap file and find the audio file
-                string? beatmapDir = null;
-                var beatmapInfo = GetSelectedBeatmapInfo();
-                if (beatmapInfo != null)
-                {
-                    beatmapDir = Path.GetDirectoryName(beatmapInfo.Path);
-                }
-                
-                if (string.IsNullOrEmpty(beatmapDir))
-                {
-                    Console.WriteLine("Could not determine beatmap directory");
-                    return;
-                }
-                
-                string audioPath = Path.Combine(beatmapDir, _currentBeatmap.AudioFilename);
-                _currentAudioPath = audioPath;
-                
-                if (!File.Exists(audioPath))
-                {
-                    Console.WriteLine($"Audio file not found: {audioPath}");
-                    return;
-                }
-                
-                // Stop any existing audio first
-                StopAudio();
-                
-                // Create audio reader based on file extension
-                string extension = Path.GetExtension(audioPath).ToLower();
-                
-                if (extension == ".mp3")
-                {
-                    _audioReader = new Mp3FileReader(audioPath);
-                    _audioFile = (Mp3FileReader)_audioReader;
-                }
-                else if (extension == ".wav")
-                {
-                    _audioReader = new WaveFileReader(audioPath);
-                    _audioFile = (WaveFileReader)_audioReader;
-                }
-                else if (extension == ".ogg")
-                {
-                    _audioReader = new VorbisWaveReader(audioPath);
-                    _audioFile = (VorbisWaveReader)_audioReader;
-                }
-                else
-                {
-                    Console.WriteLine($"Unsupported audio format: {extension}");
-                    return;
-                }
-                
-                // Create a sample provider for volume control
-                _sampleProvider = _audioFile.ToSampleProvider();
-                var volumeProvider = new VolumeSampleProvider(_sampleProvider)
-                {
-                    Volume = _volume
-                };
-                
-                // Initialize the audio player (if needed)
-                if (_audioPlayer == null)
-                {
-                    InitializeAudioPlayer();
-                }
-                
-                // Always start audio reading from the beginning for gameplay
-                if (_audioFile is Mp3FileReader mp3Reader)
-                {
-                    mp3Reader.Position = 0;
-                    mp3Reader.CurrentTime = TimeSpan.Zero;
-                }
-                else if (_audioFile is WaveFileReader waveReader)
-                {
-                    waveReader.Position = 0;
-                    waveReader.CurrentTime = TimeSpan.Zero;
-                }
-                else if (_audioFile is VorbisWaveReader vorbisReader)
-                {
-                    vorbisReader.Position = 0;
-                    vorbisReader.CurrentTime = TimeSpan.Zero;
-                }
-                
-                // Set up the player with our volume provider
-                _audioPlayer?.Init(volumeProvider);
-                _audioLoaded = true;
-                
-                Console.WriteLine($"Audio loaded: {audioPath}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error loading audio: {ex.Message}");
-                _audioLoaded = false;
-            }
-        }
-        
         // Start the game
         public void Start()
         {
@@ -662,26 +655,9 @@ namespace C4TX.SDL.Engine
             
             // Reset audio file position to the beginning
             // This is critical to ensure sync between beatmap and audio
-            if (_audioFile != null)
+            if (_mixerStream != 0)
             {
-                if (_audioFile is Mp3FileReader mp3Reader)
-                {
-                    // Reset to beginning of file
-                    mp3Reader.Position = 0;
-                    mp3Reader.CurrentTime = TimeSpan.Zero;
-                }
-                else if (_audioFile is WaveFileReader waveReader)
-                {
-                    // Reset to beginning of file
-                    waveReader.Position = 0;
-                    waveReader.CurrentTime = TimeSpan.Zero;
-                }
-                else if (_audioFile is VorbisWaveReader vorbisReader)
-                {
-                    // Reset to beginning of file
-                    vorbisReader.Position = 0;
-                    vorbisReader.CurrentTime = TimeSpan.Zero;
-                }
+                Bass.ChannelSetPosition(_mixerStream, 0);
             }
             
             // Explicitly reload the audio to ensure clean state
@@ -714,17 +690,17 @@ namespace C4TX.SDL.Engine
             }
             
             // Start audio playback with delay
-            if (_audioEnabled && _audioLoaded && _audioPlayer != null)
+            if (_audioEnabled && _audioLoaded && _mixerStream != 0)
             {
                 try
                 {
                     // Stop any current playback
-                    _audioPlayer.Stop();
+                    StopAudio();
                     
                     // Start audio playback after the countdown delay
                     Task.Delay(START_DELAY_MS).ContinueWith(_ => 
                     {
-                        _audioPlayer.Play();
+                        Bass.ChannelPlay(_mixerStream);
                         Console.WriteLine("Audio playback started");
                     });
                 }
@@ -769,30 +745,28 @@ namespace C4TX.SDL.Engine
             if (_currentState == GameState.Playing)
             {
                 _gameTimer.Stop();
-                if (_audioPlayer != null && _audioPlayer.PlaybackState == PlaybackState.Playing)
+                if (_mixerStream != 0 && Bass.ChannelIsActive(_mixerStream) == PlaybackState.Playing)
                 {
-                    _audioPlayer.Pause();
+                    Bass.ChannelPause(_mixerStream);
                 }
                 _currentState = GameState.Paused;
-                Console.WriteLine("Game paused");
             }
             else if (_currentState == GameState.Paused)
             {
                 _gameTimer.Start();
-                if (_audioPlayer != null && _audioPlayer.PlaybackState == PlaybackState.Paused)
+                if (_mixerStream != 0 && Bass.ChannelIsActive(_mixerStream) == PlaybackState.Paused)
                 {
-                    _audioPlayer.Play();
+                    Bass.ChannelPlay(_mixerStream, false);
                 }
                 _currentState = GameState.Playing;
-                Console.WriteLine("Game resumed");
             }
         }
         
         private void StopAudio()
         {
-            if (_audioPlayer != null && _audioPlayer.PlaybackState == PlaybackState.Playing)
+            if (_mixerStream != 0 && Bass.ChannelIsActive(_mixerStream) == PlaybackState.Playing)
             {
-                _audioPlayer.Stop();
+                Bass.ChannelStop(_mixerStream);
             }
         }
         
@@ -840,7 +814,7 @@ namespace C4TX.SDL.Engine
                 return;
             }
             
-            // Handle volume control only in menu state
+            // Handle volume control in menu state
             if (_currentState == GameState.Menu)
             {
                 if (scancode == SDL_Scancode.SDL_SCANCODE_MINUS || 
@@ -872,6 +846,18 @@ namespace C4TX.SDL.Engine
                     }
                     return;
                 }
+                
+                // Rate adjustment in menu
+                if (scancode == SDL_Scancode.SDL_SCANCODE_1)
+                {
+                    AdjustRate(-RATE_STEP);
+                    return;
+                }
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_2)
+                {
+                    AdjustRate(RATE_STEP);
+                    return;
+                }
             }
             
             // Handle different keys based on game state
@@ -889,6 +875,18 @@ namespace C4TX.SDL.Engine
                         }
                         return;
                     }
+                }
+                
+                // Rate adjustment during gameplay
+                if (scancode == SDL_Scancode.SDL_SCANCODE_1)
+                {
+                    AdjustRate(-RATE_STEP);
+                    return;
+                }
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_2)
+                {
+                    AdjustRate(RATE_STEP);
+                    return;
                 }
                 
                 // Escape to stop
@@ -1154,118 +1152,118 @@ namespace C4TX.SDL.Engine
                         }
                     }
                     else if (scancode == SDL_Scancode.SDL_SCANCODE_UP)
+                {
+                    // Up key moves to previous song
+                    if (_selectedSongIndex > 0)
                     {
-                        // Up key moves to previous song
-                        if (_selectedSongIndex > 0)
+                        _selectedSongIndex--;
+                        _selectedDifficultyIndex = 0; // Reset difficulty selection
+                        // Load first difficulty of this song
+                        if (_availableBeatmapSets != null && 
+                            _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
                         {
-                            _selectedSongIndex--;
-                            _selectedDifficultyIndex = 0; // Reset difficulty selection
-                            // Load first difficulty of this song
-                            if (_availableBeatmapSets != null && 
-                                _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
-                            {
-                                string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[0].Path;
-                                LoadBeatmap(beatmapPath);
-                                
-                                // Clear cached scores when difficulty changes
-                                _cachedScoreMapHash = string.Empty;
-                                _cachedScores.Clear();
-                                _hasCheckedCurrentHash = false;
-                                
-                                // Preview the audio for this beatmap
-                                PreviewBeatmapAudio(beatmapPath);
-                            }
+                            string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[0].Path;
+                            LoadBeatmap(beatmapPath);
+                            
+                            // Clear cached scores when difficulty changes
+                            _cachedScoreMapHash = string.Empty;
+                            _cachedScores.Clear();
+                            _hasCheckedCurrentHash = false;
+                            
+                            // Preview the audio for this beatmap
+                            PreviewBeatmapAudio(beatmapPath);
                         }
                     }
-                    else if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
+                }
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
+                {
+                    // Down key moves to next song
+                    if (_availableBeatmapSets != null && _selectedSongIndex < _availableBeatmapSets.Count - 1)
                     {
-                        // Down key moves to next song
-                        if (_availableBeatmapSets != null && _selectedSongIndex < _availableBeatmapSets.Count - 1)
+                        _selectedSongIndex++;
+                        _selectedDifficultyIndex = 0; // Reset difficulty selection
+                        // Load first difficulty of this song
+                        if (_availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
                         {
-                            _selectedSongIndex++;
-                            _selectedDifficultyIndex = 0; // Reset difficulty selection
-                            // Load first difficulty of this song
-                            if (_availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
-                            {
-                                string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[0].Path;
-                                LoadBeatmap(beatmapPath);
-                                
-                                // Clear cached scores when difficulty changes
-                                _cachedScoreMapHash = string.Empty;
-                                _cachedScores.Clear();
-                                _hasCheckedCurrentHash = false;
-                                
-                                // Preview the audio for this beatmap
-                                PreviewBeatmapAudio(beatmapPath);
-                            }
+                            string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[0].Path;
+                            LoadBeatmap(beatmapPath);
+                            
+                            // Clear cached scores when difficulty changes
+                            _cachedScoreMapHash = string.Empty;
+                            _cachedScores.Clear();
+                            _hasCheckedCurrentHash = false;
+                            
+                            // Preview the audio for this beatmap
+                            PreviewBeatmapAudio(beatmapPath);
                         }
                     }
-                    else if (scancode == SDL_Scancode.SDL_SCANCODE_LEFT)
+                }
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_LEFT)
+                {
+                    // Left key selects previous difficulty of current song
+                    if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
+                        _selectedSongIndex < _availableBeatmapSets.Count)
                     {
-                        // Left key selects previous difficulty of current song
-                        if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
-                            _selectedSongIndex < _availableBeatmapSets.Count)
+                        var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+                        if (_selectedDifficultyIndex > 0)
                         {
-                            var currentMapset = _availableBeatmapSets[_selectedSongIndex];
-                            if (_selectedDifficultyIndex > 0)
-                            {
-                                _selectedDifficultyIndex--;
-                                // Load the selected difficulty
-                                string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
-                                LoadBeatmap(beatmapPath);
-                                
-                                // Clear cached scores when difficulty changes
-                                _cachedScoreMapHash = string.Empty;
-                                _cachedScores.Clear();
-                                _hasCheckedCurrentHash = false;
-                                
-                                // Preview the audio for this beatmap
-                                PreviewBeatmapAudio(beatmapPath);
-                            }
+                            _selectedDifficultyIndex--;
+                            // Load the selected difficulty
+                            string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
+                            LoadBeatmap(beatmapPath);
+                            
+                            // Clear cached scores when difficulty changes
+                            _cachedScoreMapHash = string.Empty;
+                            _cachedScores.Clear();
+                            _hasCheckedCurrentHash = false;
+                            
+                            // Preview the audio for this beatmap
+                            PreviewBeatmapAudio(beatmapPath);
                         }
                     }
-                    else if (scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)
+                }
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)
+                {
+                    // Right key selects next difficulty of current song
+                    if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
+                        _selectedSongIndex < _availableBeatmapSets.Count)
                     {
-                        // Right key selects next difficulty of current song
-                        if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
-                            _selectedSongIndex < _availableBeatmapSets.Count)
+                        var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+                        if (_selectedDifficultyIndex < currentMapset.Beatmaps.Count - 1)
                         {
-                            var currentMapset = _availableBeatmapSets[_selectedSongIndex];
-                            if (_selectedDifficultyIndex < currentMapset.Beatmaps.Count - 1)
-                            {
-                                _selectedDifficultyIndex++;
-                                // Load the selected difficulty
-                                string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
-                                LoadBeatmap(beatmapPath);
-                                
-                                // Clear cached scores when difficulty changes
-                                _cachedScoreMapHash = string.Empty;
-                                _cachedScores.Clear();
-                                _hasCheckedCurrentHash = false;
-                                
-                                // Preview the audio for this beatmap
-                                PreviewBeatmapAudio(beatmapPath);
-                            }
+                            _selectedDifficultyIndex++;
+                            // Load the selected difficulty
+                            string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
+                            LoadBeatmap(beatmapPath);
+                            
+                            // Clear cached scores when difficulty changes
+                            _cachedScoreMapHash = string.Empty;
+                            _cachedScores.Clear();
+                            _hasCheckedCurrentHash = false;
+                            
+                            // Preview the audio for this beatmap
+                            PreviewBeatmapAudio(beatmapPath);
                         }
                     }
-                    // Enter to start the game
-                    else if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
+                }
+                // Enter to start the game
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
+                {
+                    if (!string.IsNullOrWhiteSpace(_username))
                     {
-                        if (!string.IsNullOrWhiteSpace(_username))
-                        {
-                            Start();
-                        }
-                        else
-                        {
-                            // If no username, start username editing
-                            _isEditingUsername = true;
-                        }
+                        Start();
                     }
-                    
-                    // Escape to exit
-                    else if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
+                    else
                     {
-                        _isRunning = false;
+                        // If no username, start username editing
+                        _isEditingUsername = true;
+                    }
+                }
+                
+                // Escape to exit
+                else if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
+                {
+                    _isRunning = false;
                     }
                 }
             }
@@ -1471,13 +1469,10 @@ namespace C4TX.SDL.Engine
         
         private void CheckForHits(int lane)
         {
-            if (_currentBeatmap == null)
-                return;
-                
-            // Add a hit effect
+            // Add a hit effect for visual feedback
             _hitEffects.Add((lane, _currentTime));
-                
-            // Check for notes in the hit window
+            
+            // Check if any notes in the active notes list should be hit
             foreach (var noteEntry in _activeNotes)
             {
                 var note = noteEntry.Note;
@@ -1488,8 +1483,8 @@ namespace C4TX.SDL.Engine
                     
                 if (note.Column == lane)
                 {
-                    // Adjust note timing to account for start delay
-                    double adjustedStartTime = note.StartTime + START_DELAY_MS;
+                    // Adjust note timing to account for start delay and rate
+                    double adjustedStartTime = GetRateAdjustedStartTime(note.StartTime);
                     double timeDiff = Math.Abs(_currentTime - adjustedStartTime);
                     
                     if (timeDiff <= _hitWindowMs)
@@ -1577,8 +1572,8 @@ namespace C4TX.SDL.Engine
                     
                     foreach (var hitObject in _currentBeatmap.HitObjects)
                     {
-                        // Adjust note timing to account for start delay
-                        double adjustedStartTime = hitObject.StartTime + START_DELAY_MS;
+                        // Adjust note timing to account for start delay and rate
+                        double adjustedStartTime = GetRateAdjustedStartTime(hitObject.StartTime);
                         
                         if (adjustedStartTime <= _currentTime + visibleTimeWindow && 
                             adjustedStartTime >= _currentTime - _hitWindowMs)
@@ -1598,8 +1593,8 @@ namespace C4TX.SDL.Engine
                         var note = _activeNotes[i].Note;
                         var hit = _activeNotes[i].Hit;
                         
-                        // Adjust note timing to account for start delay
-                        double adjustedStartTime = note.StartTime + START_DELAY_MS;
+                        // Adjust note timing to account for start delay and rate
+                        double adjustedStartTime = GetRateAdjustedStartTime(note.StartTime);
                         
                         if (adjustedStartTime < _currentTime - _hitWindowMs && !hit)
                         {
@@ -1737,34 +1732,44 @@ namespace C4TX.SDL.Engine
         
         private void Render()
         {
-            // Clear screen
+            // Clear screen with background color
             SDL_SetRenderDrawColor(_renderer, _bgColor.r, _bgColor.g, _bgColor.b, _bgColor.a);
             SDL_RenderClear(_renderer);
             
-            if (_currentState == GameState.Menu)
+            // Render different content based on game state
+            switch (_currentState)
             {
-                RenderMenu();
-            }
-            else if (_currentState == GameState.Playing || _currentState == GameState.Paused)
-            {
-                RenderGameplay();
-                
-                // Show pause overlay if paused
-                if (_currentState == GameState.Paused)
-                {
+                case GameState.Menu:
+                    RenderMenu();
+                    break;
+                case GameState.Playing:
+                    RenderGameplay();
+                    break;
+                case GameState.Paused:
+                    RenderGameplay();
                     RenderPauseOverlay();
-                }
-            }
-            else if (_currentState == GameState.Results)
-            {
-                RenderResults();
-            }
-            else if (_currentState == GameState.Settings)
-            {
-                RenderSettings();
+                    break;
+                case GameState.Results:
+                    RenderResults();
+                    break;
+                case GameState.Settings:
+                    RenderSettings();
+                    break;
             }
             
-            // Update screen
+            // Always render volume indicator if needed
+            if (_showVolumeIndicator)
+            {
+                RenderVolumeIndicator();
+            }
+            
+            // Always render rate indicator if needed
+            if (_showRateIndicator)
+            {
+                RenderRateIndicator();
+            }
+            
+            // Present the renderer
             SDL_RenderPresent(_renderer);
         }
         
@@ -1899,8 +1904,8 @@ namespace C4TX.SDL.Engine
                 
                 // Calculate note position
                 int laneX = _lanePositions[note.Column];
-                // Adjust note timing to account for start delay
-                double adjustedStartTime = note.StartTime + START_DELAY_MS;
+                // Adjust note timing to account for start delay and rate
+                double adjustedStartTime = GetRateAdjustedStartTime(note.StartTime);
                 double timeOffset = adjustedStartTime - _currentTime;
                 double noteY = _hitPosition - (timeOffset * _noteSpeed * _windowHeight);
                 
@@ -2297,6 +2302,10 @@ namespace C4TX.SDL.Engine
             RenderText($"Score: {_score}", _windowWidth / 2, 100, _textColor, false, true);
             RenderText($"Max Combo: {_maxCombo}x", _windowWidth / 2, 130, _textColor, false, true);
             RenderText($"Accuracy: {displayAccuracy:P2} (Model: {accuracyModelName})", _windowWidth / 2, 160, _textColor, false, true);
+            
+            // Display the playback rate
+            float displayRate = isReplay && _selectedScore != null ? _selectedScore.PlaybackRate : _currentRate;
+            RenderText($"Rate: {displayRate:F1}x", _windowWidth / 2, 190, _accentColor, false, true);
             
             // Draw graph
             if (hitData.Count > 0)
@@ -2834,10 +2843,10 @@ namespace C4TX.SDL.Engine
             
             _volume = Math.Clamp(_volume + scaledChange, 0f, 0.4f);
             
-            if (_audioPlayer != null)
+            if (_audioStream > 0)
             {
                 // Scale the actual volume to the full range (0-100%)
-                _audioPlayer.Volume = _volume * 2.5f;
+                Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Volume, _volume * 2.5f);
             }
             
             Console.WriteLine($"Volume set to: {_volume * 250:0}%");
@@ -2878,6 +2887,9 @@ namespace C4TX.SDL.Engine
                     
                     // Get beatmap set ID if available
                     BeatmapSetId = GetCurrentBeatmapSetId(),
+                    
+                    // Save the current playback rate
+                    PlaybackRate = _currentRate,
                     
                     // Total notes count
                     TotalNotes = _totalNotes,
@@ -3058,16 +3070,16 @@ namespace C4TX.SDL.Engine
             }
             
             // Clean up audio
-            if (_audioReader != null)
+            if (_audioStream > 0)
             {
-                _audioReader.Dispose();
-                _audioReader = null;
+                Bass.StreamFree(_audioStream);
+                _audioStream = 0;
             }
             
-            if (_audioPlayer != null)
+            if (_mixerStream > 0)
             {
-                _audioPlayer.Dispose();
-                _audioPlayer = null;
+                Bass.StreamFree(_mixerStream);
+                _mixerStream = 0;
             }
             
             // Quit SDL subsystems
@@ -3376,15 +3388,15 @@ namespace C4TX.SDL.Engine
                 
                 if (songExpanded[_selectedSongIndex] && 
                     _selectedDifficultyIndex >= 0 && 
-                    _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
-                {
+                _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+            {
                     // Find the selected difficulty
                     var selectedDiffInfo = itemPositions.FirstOrDefault(p => !p.IsSong && p.ParentIndex == _selectedSongIndex && p.Index == _selectedDifficultyIndex);
                     selectedItemY = selectedDiffInfo.StartY;
                     selectedItemHeight = difficultyHeight;
-                }
-                else
-                {
+            }
+            else
+            {
                     // Just the song is selected
                     selectedItemY = selectedSongInfo.StartY;
                     selectedItemHeight = itemHeight;
@@ -3455,22 +3467,22 @@ namespace C4TX.SDL.Engine
                 // Draw song or difficulty based on item type
                 if (item.IsSong)
                 {
-                    // Draw song item
+                // Draw song item
                     var beatmapSet = _availableBeatmapSets[item.Index];
                     bool isExpanded = songExpanded[item.Index];
                     
                     // Draw song background
-                    SDL_Color songBgColor = isSelected ? _primaryColor : _panelBgColor;
-                    SDL_Color textColor = isSelected ? _textColor : _mutedTextColor;
-                    
+                SDL_Color songBgColor = isSelected ? _primaryColor : _panelBgColor;
+                SDL_Color textColor = isSelected ? _textColor : _mutedTextColor;
+                
                     // Calculate proper panel height for better alignment
-                    int actualItemHeight = itemHeight - 5;
+                int actualItemHeight = itemHeight - 5;
                     DrawPanel(x + 5, screenY, width - 10, actualItemHeight, songBgColor, isSelected ? _accentColor : _panelBgColor, isSelected ? 2 : 0);
-                    
+                
                     // Truncate text if too long
-                    string songTitle = $"{beatmapSet.Artist} - {beatmapSet.Title}";
-                    if (songTitle.Length > 30) songTitle = songTitle.Substring(0, 28) + "...";
-                    
+                string songTitle = $"{beatmapSet.Artist} - {beatmapSet.Title}";
+                if (songTitle.Length > 30) songTitle = songTitle.Substring(0, 28) + "...";
+                
                     // Render song text
                     RenderText(songTitle, x + 20, screenY + actualItemHeight/2 - 3, textColor, false, false);
                     
@@ -3480,23 +3492,23 @@ namespace C4TX.SDL.Engine
                 }
                 else
                 {
-                    // Draw difficulty item
+                        // Draw difficulty item
                     var beatmapSet = _availableBeatmapSets[item.ParentIndex];
                     var beatmap = beatmapSet.Beatmaps[item.Index];
                     bool isDiffSelected = item.ParentIndex == _selectedSongIndex && item.Index == _selectedDifficultyIndex;
                     
                     // Draw difficulty background
-                    SDL_Color diffBgColor = isDiffSelected ? _accentColor : new SDL_Color { r = 40, g = 40, b = 70, a = 255 };
-                    SDL_Color diffTextColor = isDiffSelected ? _textColor : _mutedTextColor;
-                    
+                        SDL_Color diffBgColor = isDiffSelected ? _accentColor : new SDL_Color { r = 40, g = 40, b = 70, a = 255 };
+                        SDL_Color diffTextColor = isDiffSelected ? _textColor : _mutedTextColor;
+                        
                     // Calculate proper panel height for better alignment
-                    int actualPanelHeight = difficultyHeight - 5;
+                        int actualPanelHeight = difficultyHeight - 5;
                     DrawPanel(x + 35, screenY, width - 40, actualPanelHeight, diffBgColor, isDiffSelected ? _highlightColor : diffBgColor, isDiffSelected ? 2 : 0);
-                    
+                        
                     // Truncate difficulty text if needed
-                    string diffName = beatmap.Difficulty;
-                    if (diffName.Length > 25) diffName = diffName.Substring(0, 23) + "...";
-                    
+                        string diffName = beatmap.Difficulty;
+                        if (diffName.Length > 25) diffName = diffName.Substring(0, 23) + "...";
+                        
                     // Calculate difficulty rating
                     double difficultyRating;
                     
@@ -3546,88 +3558,110 @@ namespace C4TX.SDL.Engine
         // Draw the song details panel
         private void DrawSongDetailsPanel(int x, int y, int width, int height)
         {
-            DrawPanel(x, y, width, height, new SDL_Color { r = 25, g = 25, b = 45, a = 255 }, _primaryColor);
+            DrawPanel(x, y, width, height, _panelBgColor, _accentColor);
             
-            if (_availableBeatmapSets == null || _selectedSongIndex >= _availableBeatmapSets.Count)
+            if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0 || _selectedSongIndex < 0 || _selectedSongIndex >= _availableBeatmapSets.Count)
             {
-                RenderText("No song selected", x + width/2, y + height/2, _mutedTextColor, false, true);
+                RenderText("No songs available", x + width / 2, y + height / 2, _mutedTextColor, false, true);
                 return;
             }
             
-            var currentMapset = _availableBeatmapSets[_selectedSongIndex];
-            
-            if (_selectedDifficultyIndex >= currentMapset.Beatmaps.Count)
+            var selectedSet = _availableBeatmapSets[_selectedSongIndex];
+            if (selectedSet.Beatmaps.Count == 0)
+            {
+                RenderText("No difficulties available", x + width / 2, y + height / 2, _mutedTextColor, false, true);
                 return;
-                
-            var currentBeatmap = currentMapset.Beatmaps[_selectedDifficultyIndex];
-            
-            // Draw song info
-            int textX = x + PANEL_PADDING;
-            int textY = y + PANEL_PADDING;
-            
-            // Title
-            RenderText("Song Information", x + width/2, textY, _highlightColor, true, true);
-            textY += 30;
-            
-            // Artist and Title
-            RenderText($"Artist: {currentMapset.Artist}", textX, textY, _textColor);
-            textY += 25;
-            
-            RenderText($"Title: {currentMapset.Title}", textX, textY, _textColor);
-            textY += 25;
-            
-            // Difficulty info
-            RenderText($"Difficulty: {currentBeatmap.Difficulty}", textX, textY, _textColor);
-            textY += 25;
-            
-            // Calculate difficulty rating
-            double difficultyRating;
-            string difficultyName;
-            
-            // If the current beatmap is loaded, use it for more accurate difficulty calculation
-            if (_currentBeatmap != null && _currentBeatmap.Id == currentBeatmap.Id)
-            {
-                // Use the full beatmap with hit objects for better difficulty calculation
-                difficultyRating = _difficultyRatingService.CalculateDifficulty(_currentBeatmap);
-                
-                // Cache the calculated rating
-                currentBeatmap.CachedDifficultyRating = difficultyRating;
-            }
-            else if (currentBeatmap.CachedDifficultyRating.HasValue)
-            {
-                // Use cached value if available
-                difficultyRating = currentBeatmap.CachedDifficultyRating.Value;
-            }
-            else
-            {
-                // Use the beatmap info only when full beatmap isn't available
-                difficultyRating = _difficultyRatingService.CalculateDifficulty(currentBeatmap);
-                
-                // Cache the calculated rating
-                currentBeatmap.CachedDifficultyRating = difficultyRating;
             }
             
-            difficultyName = _difficultyRatingService.GetDifficultyName(difficultyRating);
-            var difficultyColor = _difficultyRatingService.GetDifficultyColor(difficultyRating);
-            SDL_Color ratingColor = new SDL_Color { r = difficultyColor.r, g = difficultyColor.g, b = difficultyColor.b, a = 255 };
+            // Draw song title and artist
+            int titleY = y + 30;
+            RenderText(selectedSet.Title, x + width / 2, titleY, _highlightColor, true, true);
             
-            // Add rating display
-            RenderText($"Rating: {difficultyRating:F1}★ ({difficultyName})", textX, textY, ratingColor);
-            textY += 25;
+            int artistY = titleY + 40;
+            RenderText(selectedSet.Artist, x + width / 2, artistY, _textColor, false, true);
             
-            // Additional info if available
-            if (_currentBeatmap != null)
+            // Draw rate information
+            int rateY = artistY + 40;
+            RenderText($"Rate: {_currentRate:F1}x", x + width / 2, rateY, _accentColor, false, true);
+            RenderText("(1/2 keys to adjust)", x + width / 2, rateY + 25, _mutedTextColor, false, true);
+            
+            // Draw difficulty selection instructions
+            int diffY = rateY + 70;
+            RenderText(
+                _isSelectingDifficulty ? "Select Difficulty:" : "Press ENTER to select difficulty",
+                x + width / 2, diffY, _textColor, false, true
+            );
+            
+            if (_isSelectingDifficulty)
             {
-                // BPM is not available in the Beatmap class, so just show note count
-                RenderText($"Notes: {_currentBeatmap.HitObjects.Count}", textX, textY, _textColor);
-                textY += 25;
+                int diffStartY = diffY + 40;
+                int diffItemHeight = 40;
+                int visibleItems = 5;
+                int totalItems = selectedSet.Beatmaps.Count;
                 
-                // Show additional info
-                RenderText($"Length: {TimeSpan.FromMilliseconds(_currentBeatmap.Length):mm\\:ss}", textX, textY, _textColor);
+                int startIndex = Math.Max(0, Math.Min(_selectedDifficultyIndex - (visibleItems / 2), totalItems - visibleItems));
+                startIndex = Math.Max(0, startIndex);
+                
+                for (int i = 0; i < Math.Min(visibleItems, totalItems); i++)
+                {
+                    int idx = startIndex + i;
+                    if (idx >= 0 && idx < totalItems)
+                    {
+                        bool isSelected = idx == _selectedDifficultyIndex;
+                        string diffName = selectedSet.Beatmaps[idx].Difficulty;
+                        
+                        // Get difficulty info
+                        double difficultyRating = 0;
+                        if (selectedSet.Beatmaps[idx].CachedDifficultyRating.HasValue)
+                        {
+                            difficultyRating = selectedSet.Beatmaps[idx].CachedDifficultyRating.Value;
+                        }
+                        else
+                        {
+                            difficultyRating = _difficultyRatingService.CalculateDifficulty(selectedSet.Beatmaps[idx]);
+                            selectedSet.Beatmaps[idx].CachedDifficultyRating = difficultyRating;
+                        }
+                        
+                        string diffText = difficultyRating > 0 ? $"{diffName} ({difficultyRating:F2}★)" : diffName;
+                        
+                        SDL_Color itemColor = isSelected ? _highlightColor : _textColor;
+                        RenderText(
+                            diffText,
+                            x + width / 2, diffStartY + (i * diffItemHeight),
+                            itemColor, false, true
+                        );
+                    }
+                }
+                
+                // Draw Enter to play instruction
+                RenderText(
+                    "ENTER to play, ESC to cancel",
+                    x + width / 2, diffStartY + (visibleItems * diffItemHeight) + 20,
+                    _mutedTextColor, false, true
+                );
             }
             
-            // Play instruction
-            RenderText("Press ENTER to play", x + width/2, y + height - PANEL_PADDING, _accentColor, false, true);
+            // If we have a cached hash for this song, show the score section
+            if (!string.IsNullOrEmpty(_cachedScoreMapHash))
+            {
+                int scoresY = height - 80;
+                int scoresTextY = scoresY + 40;
+                
+                if (_cachedScores.Count > 0)
+                {
+                    RenderText(
+                        $"{_cachedScores.Count} recorded scores",
+                        x + width / 2, scoresY,
+                        _textColor, false, true
+                    );
+                    
+                    RenderText(
+                        "Tab to view scores",
+                        x + width / 2, scoresTextY,
+                        _mutedTextColor, false, true
+                    );
+                }
+            }
         }
         
         // Draw the scores panel
@@ -3662,9 +3696,9 @@ namespace C4TX.SDL.Engine
                 if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.MapHash))
                 {
                     mapHash = _currentBeatmap.MapHash;
-            }
-            else
-            {
+                }
+                else
+                {
                     // Calculate hash if needed
                     mapHash = _beatmapService.CalculateBeatmapHash(currentBeatmap.Path);
                 }
@@ -3808,32 +3842,40 @@ namespace C4TX.SDL.Engine
         // Draw instructions panel at the bottom with fixed key representation
         private void DrawInstructionPanel(int x, int y, int width, int height)
         {
-            DrawPanel(x, y, width, height, _panelBgColor, _primaryColor);
+            DrawPanel(x, y, width, height, _panelBgColor, _accentColor);
             
-            // Draw key bindings with proper representation
-            StringBuilder instructions = new StringBuilder();
+            const int lineHeight = 30;
+            const int startY = 30;
+            const int startX = 20;
             
-            instructions.Append("↑↓: Navigate Songs | ");
+            int currentY = y + startY;
             
-            if (_selectedSongIndex >= 0 && _availableBeatmapSets != null && 
-                _availableBeatmapSets.Count > 0 && 
-                _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count > 0)
-            {
-                instructions.Append("←→: Select Difficulty | ");
-            }
+            RenderText("Controls:", x + width / 2, currentY, _textColor, false, true);
+            currentY += lineHeight + 5;
             
-            // Add TAB instruction if there are scores available
-            if (_cachedScores != null && _cachedScores.Count > 0)
-            {
-                instructions.Append("TAB: Toggle Focus | ");
-            }
+            RenderText("D F J K - Game Keys", x + startX, currentY, _mutedTextColor, false, false);
+            currentY += lineHeight;
             
-            instructions.Append("Enter: Play | ");
-            instructions.Append("U: Change Username | ");
-            instructions.Append("S: Settings | ");
-            instructions.Append("Esc: Exit");
+            RenderText("ESC - Return to Menu", x + startX, currentY, _mutedTextColor, false, false);
+            currentY += lineHeight;
             
-            RenderText(instructions.ToString(), x + width/2, y + height/2, _textColor, false, true);
+            RenderText("P - Pause/Resume", x + startX, currentY, _mutedTextColor, false, false);
+            currentY += lineHeight;
+            
+            RenderText("F11 - Toggle Fullscreen", x + startX, currentY, _mutedTextColor, false, false);
+            currentY += lineHeight;
+            
+            RenderText("1/2 - Decrease/Increase Rate", x + startX, currentY, _mutedTextColor, false, false);
+            currentY += lineHeight;
+            
+            RenderText("U - Change Username", x + startX, currentY, _mutedTextColor, false, false);
+            currentY += lineHeight;
+            
+            RenderText("S - Settings", x + startX, currentY, _mutedTextColor, false, false);
+            currentY += lineHeight;
+            
+            RenderText("+/- - Adjust Volume", x + startX, currentY, _mutedTextColor, false, false);
+            currentY += lineHeight;
         }
         
         // Method to render previous scores for a beatmap
@@ -3883,7 +3925,7 @@ namespace C4TX.SDL.Engine
                     string date = score.DatePlayed.ToString("yyyy-MM-dd HH:mm");
                     
                     // Display score info
-                    string scoreInfo = $"{date} - Score: {score.Score:N0} - Acc: {score.Accuracy:P2} - Combo: {score.MaxCombo}x";
+                    string scoreInfo = $"{date} - Score: {score.Score:N0} - Acc: {score.Accuracy:P2} - Combo: {score.MaxCombo}x - Rate: {score.PlaybackRate:F1}x";
                     
                     SDL_Color scoreColor = new SDL_Color();
                     if (i == 0)
@@ -3984,79 +4026,57 @@ namespace C4TX.SDL.Engine
         {
             try
             {
-                // Stop any existing audio
-                StopAudio();
+                // Stop any current playback
+                StopAudioPreview();
                 
-                // Create audio reader based on file extension
+                // Free any existing stream
+                if (_audioStream != 0)
+                {
+                    Bass.StreamFree(_audioStream);
+                    _audioStream = 0;
+                }
+                
+                // Create audio stream based on file extension
                 string extension = Path.GetExtension(audioPath).ToLower();
                 
-                if (extension == ".mp3")
+                // Create stream with appropriate flags
+                _audioStream = Bass.CreateStream(audioPath, 0, 0, BassFlags.Decode);
+                
+                if (_audioStream == 0)
                 {
-                    _audioReader = new Mp3FileReader(audioPath);
-                    _audioFile = (Mp3FileReader)_audioReader;
+                    Console.WriteLine($"Failed to create audio stream: {Bass.LastError}");
+                    return;
                 }
-                else if (extension == ".wav")
+
+                // Create tempo stream with BassFx
+                _mixerStream = BassFx.TempoCreate(_audioStream, BassFlags.FxFreeSource);
+                
+                if (_mixerStream == 0)
                 {
-                    _audioReader = new WaveFileReader(audioPath);
-                    _audioFile = (WaveFileReader)_audioReader;
-                }
-                else if (extension == ".ogg")
-                {
-                    _audioReader = new VorbisWaveReader(audioPath);
-                    _audioFile = (VorbisWaveReader)_audioReader;
-                }
-                else
-                {
-                    Console.WriteLine($"Unsupported audio format: {extension}");
+                    Console.WriteLine($"Failed to create tempo stream: {Bass.LastError}");
+                    Bass.StreamFree(_audioStream);
+                    _audioStream = 0;
                     return;
                 }
                 
-                // Create sample provider
-                _sampleProvider = _audioFile.ToSampleProvider();
+                // Set volume on the tempo stream
+                Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Volume, _volume * 0.7f);
                 
-                // Apply volume (70% of normal volume for preview)
-                _sampleProvider = new VolumeSampleProvider(_sampleProvider)
-                {
-                    Volume = _volume * 0.7f
-                };
+                // Skip to 25% of the song for preview
+                long length = Bass.ChannelGetLength(_mixerStream);
+                long position = (long)(length * 0.25);
+                position = Math.Min(position, (long)(30 * 44100 * 4)); // Cap at 30 seconds
+                position = Math.Max(position, (long)(10 * 44100 * 4)); // At least 10 seconds in
                 
-                // Initialize audio player if needed
-                if (_audioPlayer == null)
-                {
-                    InitializeAudioPlayer();
-                }
+                Bass.ChannelSetPosition(_mixerStream, position);
                 
-                // Set up playback position to start shortly into the song (usually where the main melody begins)
-                if (_audioFile is Mp3FileReader mp3Reader)
-                {
-                    // Skip to 25% into the song, but not more than 30 seconds and not less than 10 seconds
-                    TimeSpan skipTo = TimeSpan.FromSeconds(
-                        Math.Min(30, Math.Max(10, mp3Reader.TotalTime.TotalSeconds * 0.25))
-                    );
-                    mp3Reader.CurrentTime = skipTo;
-                }
-                else if (_audioFile is WaveFileReader waveReader)
-                {
-                    // Skip to 25% into the song, but not more than 30 seconds and not less than 10 seconds
-                    TimeSpan skipTo = TimeSpan.FromSeconds(
-                        Math.Min(30, Math.Max(10, waveReader.TotalTime.TotalSeconds * 0.25))
-                    );
-                    waveReader.CurrentTime = skipTo;
-                }
-                else if (_audioFile is VorbisWaveReader vorbisReader)
-                {
-                    // Skip to 25% into the song, but not more than 30 seconds and not less than 10 seconds
-                    TimeSpan skipTo = TimeSpan.FromSeconds(
-                        Math.Min(30, Math.Max(10, vorbisReader.TotalTime.TotalSeconds * 0.25))
-                    );
-                    vorbisReader.CurrentTime = skipTo;
-                }
+                // Set the playback rate
+                Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Tempo, (_currentRate - 1.0f) * 100);
                 
-                // Play the audio
-                _audioPlayer?.Init(_sampleProvider);
-                _audioPlayer?.Play();
+                // Start playback
+                Bass.ChannelPlay(_mixerStream);
+                
                 _audioLoaded = true;
-                _isPreviewPlaying = true;
                 
                 Console.WriteLine($"Preview audio loaded: {audioPath}");
             }
@@ -4064,18 +4084,22 @@ namespace C4TX.SDL.Engine
             {
                 Console.WriteLine($"Error loading audio preview: {ex.Message}");
                 _audioLoaded = false;
-                _isPreviewPlaying = false;
             }
         }
         
         // Method to stop audio preview
         private void StopAudioPreview()
         {
-            if (_isPreviewPlaying)
+            if (_mixerStream != 0)
             {
-                StopAudio();
-                _isPreviewPlaying = false;
-                _previewedBeatmapPath = string.Empty;
+                Bass.ChannelStop(_mixerStream);
+                Bass.StreamFree(_mixerStream);
+                _mixerStream = 0;
+            }
+            
+            if (_audioStream != 0 && Bass.ChannelIsActive(_audioStream) != PlaybackState.Stopped)
+            {
+                Bass.ChannelStop(_audioStream);
             }
         }
         
@@ -4380,6 +4404,59 @@ namespace C4TX.SDL.Engine
             };
             SDL_SetRenderDrawColor(_renderer, _highlightColor.r, _highlightColor.g, _highlightColor.b, 255);
             SDL_RenderFillRect(_renderer, ref sliderHandle);
+        }
+
+        // Method to adjust playback rate
+        private void AdjustRate(float change)
+        {
+            _currentRate = Math.Clamp(_currentRate + change, MIN_RATE, MAX_RATE);
+            
+            if (_mixerStream != 0)
+            {
+                // BassFx uses tempo as percentage change from normal rate
+                Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Tempo, (_currentRate - 1.0f) * 100);
+            }
+            
+            _rateChangeTime = _currentTime;
+            _showRateIndicator = true;
+            
+            Console.WriteLine($"Playback rate adjusted to {_currentRate:F1}x");
+        }
+
+        // Method to render rate indicator
+        private void RenderRateIndicator()
+        {
+            if (!_showRateIndicator) return;
+            
+            // Show rate indicator for 2 seconds
+            if (_currentTime - _rateChangeTime < 2000)
+            {
+                int x = _windowWidth - 150;
+                int y = 80;
+                int width = 120;
+                int height = 40;
+                
+                // Draw background panel
+                DrawPanel(x, y, width, height, _panelBgColor, _accentColor);
+                
+                // Format rate string with 1 decimal place
+                string rateText = $"Rate: {_currentRate:F1}x";
+                
+                // Draw rate text
+                RenderText(rateText, x + width / 2, y + height / 2, _highlightColor, false, true);
+            }
+            else
+            {
+                _showRateIndicator = false;
+            }
+        }
+
+        // Method to get rate-adjusted start time
+        private double GetRateAdjustedStartTime(double originalTime)
+        {
+            // Adjust for both the start delay and the rate
+            // Divide by rate to make notes appear earlier with higher rates
+            return (originalTime / _currentRate) + START_DELAY_MS;
         }
     }
 } 

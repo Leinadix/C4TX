@@ -23,6 +23,9 @@ namespace C4TX.SDL.Models
         // SHA hash of map content for reliable identification
         public string MapHash { get; set; } = string.Empty;
         
+        // Playback rate used for this score
+        public float PlaybackRate { get; set; } = 1.0f;
+        
         // Detailed statistics
         public int TotalNotes { get; set; }
         public int PerfectHits { get; set; }

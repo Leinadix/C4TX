@@ -8,7 +8,7 @@ namespace C4TX.SDL
     {
         static void Main(string[] args)
         {
-            Console.WriteLine("Catch3K SDL - 4K Rhythm Game");
+            Console.WriteLine("C4TX SDL - 4K Rhythm Game");
             Console.WriteLine("Loading...");
             
             // First, ensure SDL2 native libraries are in the PATH
@@ -34,7 +34,7 @@ namespace C4TX.SDL
                 engine.Run();
             }
             
-            Console.WriteLine("Exiting Catch3K SDL.");
+            Console.WriteLine("Exiting C4TX SDL.");
         }
         
         // Ensure SDL2 libraries are available

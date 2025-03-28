@@ -42,7 +42,7 @@ namespace C4TX.SDL.Services
                 Directory.CreateDirectory(c4txDirectory);
             }
             
-            // Ensure the skins directory exists
+            // Ensure the []s directory exists
             if (!Directory.Exists(_skinsDirectory))
             {
                 Directory.CreateDirectory(_skinsDirectory);
@@ -178,7 +178,7 @@ namespace C4TX.SDL.Services
                 if (_loadedSkinTextures[skinName].ContainsKey(noteIndex))
                 {
                     IntPtr texture = _loadedSkinTextures[skinName][noteIndex].Texture;
-                    Console.WriteLine($"[SKIN DEBUG] Found texture for '{skinName}', column {noteIndex}");
+                    // Console.WriteLine($"[SKIN DEBUG] Found texture for '{skinName}', column {noteIndex}");
                     return texture;
                 }
                 
@@ -295,7 +295,7 @@ namespace C4TX.SDL.Services
                 for (int i = 1; i <= 4; i++)
                 {
                     string noteFile = Path.Combine(skinInfo.Path, $"note{i}.png");
-                    Console.WriteLine($"[SKIN DEBUG] Attempting to load texture from: {noteFile}");
+                    // Console.WriteLine($"[SKIN DEBUG] Attempting to load texture from: {noteFile}");
                     
                     if (!File.Exists(noteFile))
                     {
@@ -310,7 +310,7 @@ namespace C4TX.SDL.Services
                         // Store the texture using column index (0-3)
                         int columnIndex = i - 1;  // Convert 1-based file names to 0-based indices
                         
-                        Console.WriteLine($"[SKIN DEBUG] Successfully loaded texture for note{i}.png -> stored at column index {columnIndex} (size: {textureInfo.Width}x{textureInfo.Height})");
+                        // Console.WriteLine($"[SKIN DEBUG] Successfully loaded texture for note{i}.png -> stored at column index {columnIndex} (size: {textureInfo.Width}x{textureInfo.Height})");
                         skinTextures[columnIndex] = textureInfo;
                     }
                     else
