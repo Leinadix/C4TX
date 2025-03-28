@@ -24,14 +24,14 @@ namespace C4TX.SDL
                 }
                 
                 Console.WriteLine("Scanning for beatmaps...");
-                engine.ScanForBeatmaps();
+                BeatmapEngine.ScanForBeatmaps();
                 
                 // Remove the automatic game start
                 // The game will now start in menu mode
                 
                 // Run the main game loop
                 Console.WriteLine("Starting main loop...");
-                engine.Run();
+                GameEngine.Run();
             }
             
             Console.WriteLine("Exiting C4TX SDL.");
