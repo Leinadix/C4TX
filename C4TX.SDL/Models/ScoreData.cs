@@ -10,6 +10,7 @@ namespace C4TX.SDL.Models
         public string Username { get; set; } = string.Empty;
         public int Score { get; set; }
         public double Accuracy { get; set; }
+        public double Rating { get; set; }
         public int MaxCombo { get; set; }
         public DateTime DatePlayed { get; set; }
         

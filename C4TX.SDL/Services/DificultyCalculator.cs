@@ -141,9 +141,9 @@ namespace C4TX.SDL.Services {
                 int startTime = (int)obj.StartTime;
                 int endTime = (int)obj.EndTime;
 
-                startTime = (int)Math.Floor(startTime * rate);
+                startTime = (int)Math.Floor(startTime / rate);
                 if (endTime >= 0)
-                    endTime = (int)Math.Floor(endTime * rate);
+                    endTime = (int)Math.Floor(endTime / rate);
                 
                 noteSeq.Add((column, startTime, endTime));
             }

@@ -25,7 +25,7 @@ namespace C4TX.SDL.Services
         /// </summary>
         /// <param name="beatmap">The beatmap to calculate difficulty for</param>
         /// <returns>A numerical difficulty rating between 0.0 and 10.0</returns>
-        public double CalculateDifficulty(Beatmap beatmap)
+        public double CalculateDifficulty(Beatmap beatmap, double rate)
         {
             if (beatmap == null || beatmap.HitObjects == null || beatmap.HitObjects.Count == 0)
                 return DEFAULT_RATING;
@@ -37,7 +37,7 @@ namespace C4TX.SDL.Services
             double lengthInSeconds = beatmap.Length / 1000.0;
             if (lengthInSeconds <= 0) lengthInSeconds = 1; // Prevent division by zero
             double notesDensity = hitObjects.Count / lengthInSeconds;
-            double calculatedRating = DifficultyCalculator.Calculate(hitObjects.ToArray(), 1.0);
+            double calculatedRating = DifficultyCalculator.Calculate(hitObjects.ToArray(), rate);
 
 
             return Math.Max(0.0, calculatedRating);

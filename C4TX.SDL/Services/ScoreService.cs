@@ -129,7 +129,7 @@ namespace C4TX.SDL.Services
             
             var matchingScores = allScores
                 .Where(s => s.BeatmapId == beatmapId)
-                .OrderByDescending(s => s.Score)
+                .OrderByDescending(s => s.PlaybackRate * s.Accuracy)
                 .ToList();
             
             return matchingScores;
@@ -142,7 +142,7 @@ namespace C4TX.SDL.Services
             
             var matchingScores = allScores
                 .Where(s => s.MapHash == mapHash)
-                .OrderByDescending(s => s.Score)
+                .OrderByDescending(s => s.PlaybackRate * s.Accuracy)
                 .ToList();
             
             // Only log once per hash

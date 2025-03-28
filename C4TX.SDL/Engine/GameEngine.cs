@@ -422,7 +422,7 @@ namespace C4TX.SDL.Engine
                     string systemFontsDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Fonts));
                     
                     // Try some common fonts
-                    string[] commonFonts = { "Cascadia Code", "arial.ttf", "verdana.ttf", "segoeui.ttf", "calibri.ttf" };
+                    string[] commonFonts = { "Consola.ttf" };
                     foreach (var font in commonFonts)
                     {
                         string path = Path.Combine(systemFontsDir, font);
@@ -1090,7 +1090,7 @@ namespace C4TX.SDL.Engine
                             _selectedScoreIndex < _cachedScores.Count)
                         {
                             // Get the selected score
-                            var scores = _cachedScores.OrderByDescending(s => s.Accuracy).ToList();
+                            var scores = _cachedScores.OrderByDescending(s => s.PlaybackRate * s.Accuracy).ToList();
                             _selectedScore = scores[_selectedScoreIndex];
                             
                             // Set the game state values to match the selected score
@@ -1169,6 +1169,13 @@ namespace C4TX.SDL.Engine
                             _cachedScoreMapHash = string.Empty;
                             _cachedScores.Clear();
                             _hasCheckedCurrentHash = false;
+
+                            for (int i = 0; i < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count; i++)
+                            {
+                                var beatmap = _availableBeatmapSets[_selectedSongIndex].Beatmaps[i];
+                                var sr = _difficultyRatingService.CalculateDifficulty(beatmap);
+                                Console.WriteLine($"Beatmap {beatmap.Path} has SR {sr}");
+                            }
                             
                             // Preview the audio for this beatmap
                             PreviewBeatmapAudio(beatmapPath);
@@ -2843,11 +2850,12 @@ namespace C4TX.SDL.Engine
             
             _volume = Math.Clamp(_volume + scaledChange, 0f, 0.4f);
             
-            if (_audioStream > 0)
+            if (_mixerStream != 0)
             {
                 // Scale the actual volume to the full range (0-100%)
                 Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Volume, _volume * 2.5f);
             }
+            
             
             Console.WriteLine($"Volume set to: {_volume * 250:0}%");
             
@@ -2933,6 +2941,8 @@ namespace C4TX.SDL.Engine
                         Column = column
                     });
                 }
+
+
                 
                 // Save the score using the score service
                 _scoreService.SaveScore(scoreData);
@@ -3515,7 +3525,7 @@ namespace C4TX.SDL.Engine
                     if (_currentBeatmap != null && _currentBeatmap.Id == beatmap.Id)
                     {
                         // Use full beatmap for more accurate rating
-                        difficultyRating = _difficultyRatingService.CalculateDifficulty(_currentBeatmap);
+                        difficultyRating = _difficultyRatingService.CalculateDifficulty(_currentBeatmap, _currentRate);
                         beatmap.CachedDifficultyRating = difficultyRating;
                     }
                     else if (beatmap.CachedDifficultyRating.HasValue)
@@ -3575,22 +3585,22 @@ namespace C4TX.SDL.Engine
             
             // Draw song title and artist
             int titleY = y + 30;
-            RenderText(selectedSet.Title, x + width / 2, titleY, _highlightColor, true, true);
+            RenderText(selectedSet.Beatmaps[_selectedDifficultyIndex].Difficulty, x + width / 2, titleY, _highlightColor, false, true);
             
             int artistY = titleY + 40;
             RenderText(selectedSet.Artist, x + width / 2, artistY, _textColor, false, true);
             
             // Draw rate information
             int rateY = artistY + 40;
-            RenderText($"Rate: {_currentRate:F1}x", x + width / 2, rateY, _accentColor, false, true);
-            RenderText("(1/2 keys to adjust)", x + width / 2, rateY + 25, _mutedTextColor, false, true);
+            // RenderText($"Rate: {_currentRate:F1}x", x + width / 2, rateY, _accentColor, false, true);
+            // RenderText("(1/2 keys to adjust)", x + width / 2, rateY + 25, _mutedTextColor, false, true);
             
             // Draw difficulty selection instructions
             int diffY = rateY + 70;
-            RenderText(
-                _isSelectingDifficulty ? "Select Difficulty:" : "Press ENTER to select difficulty",
-                x + width / 2, diffY, _textColor, false, true
-            );
+            // RenderText(
+            //     _isSelectingDifficulty ? "Select Difficulty:" : "Press ENTER to select difficulty",
+            //     x + width / 2, diffY, _textColor, false, true
+            // );
             
             if (_isSelectingDifficulty)
             {
@@ -3729,7 +3739,7 @@ namespace C4TX.SDL.Engine
                 var scores = _cachedScores.ToList();
                 
                 // Sort scores by accuracy (highest first)
-                scores = scores.OrderByDescending(s => s.Accuracy).ToList();
+                scores = scores.OrderByDescending(s => _difficultyRatingService.CalculateDifficulty(_currentBeatmap, s.PlaybackRate) * s.Accuracy).ToList();
                 
                 if (scores.Count == 0)
                 {
@@ -3739,12 +3749,13 @@ namespace C4TX.SDL.Engine
                 
                 // Header row
                 int headerY = y + PANEL_PADDING + 30;
-                int columnSpacing = width / 5;
+                int columnSpacing = (width / 5);
                 
-                RenderText("Date", x + PANEL_PADDING, headerY, _primaryColor, false, false);
-                RenderText("Score", x + PANEL_PADDING + columnSpacing, headerY, _primaryColor, false, false);
+                RenderText("Date", x + PANEL_PADDING , headerY, _primaryColor, false, false);
+                RenderText("Score", 20 + x + PANEL_PADDING + columnSpacing, headerY, _primaryColor, false, false);
                 RenderText("Accuracy", x + PANEL_PADDING + columnSpacing * 2, headerY, _primaryColor, false, false);
                 RenderText("Combo", x + PANEL_PADDING + columnSpacing * 3, headerY, _primaryColor, false, false);
+                RenderText("Rate", x + PANEL_PADDING + columnSpacing * 4, headerY, _primaryColor, false, false);
                 
                 // Draw scores table
                 int scoreY = headerY + 25;
@@ -3787,18 +3798,20 @@ namespace C4TX.SDL.Engine
                     else
                         rowColor = _textColor;
                     
+                    var sr = _difficultyRatingService.CalculateDifficulty(_currentBeatmap, score.PlaybackRate);
+
                     // Format data
-                    string date = score.DatePlayed.ToString("yyyy-MM-dd");
-                    string scoreText = score.Score.ToString("N0");
+                    string date = score.DatePlayed.ToString("yyyy-MM-dd:HH:mm:ss");
+                    string scoreText = (sr * score.Accuracy).ToString("F4");
                     string accuracy = score.Accuracy.ToString("P2");
                     string combo = $"{score.MaxCombo}x";
                     
                     // Draw row
                     RenderText(date, x + PANEL_PADDING, scoreY, rowColor, false, false);
-                    RenderText(scoreText, x + PANEL_PADDING + columnSpacing, scoreY, rowColor, false, false);
+                    RenderText(scoreText, 20 + x + PANEL_PADDING + columnSpacing, scoreY, rowColor, false, false);
                     RenderText(accuracy, x + PANEL_PADDING + columnSpacing * 2, scoreY, rowColor, false, false);
                     RenderText(combo, x + PANEL_PADDING + columnSpacing * 3, scoreY, rowColor, false, false);
-                    
+                    RenderText(score.PlaybackRate.ToString("F1"), x + PANEL_PADDING + columnSpacing * 4, scoreY, rowColor, false, false);
                     scoreY += rowHeight;
                 }
             }
