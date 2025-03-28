@@ -47,6 +47,8 @@ namespace C4TX.SDL.Services
                     return CalculateExponentialAccuracy(timeDiff);
                 case AccuracyModel.osuOD8:
                     return CalculateOsuOD8Accuracy(timeDiff);
+                case AccuracyModel.osuOD8v1:
+                    return CalculateOsuOD8V1Accuracy(timeDiff);
                 default:
                     return CalculateLinearAccuracy(timeDiff);
             }
@@ -104,6 +106,20 @@ namespace C4TX.SDL.Services
                         case >= 100.0 / 305.0:
                             return "GOOD";
                         case >= 50.0 / 305.0:
+                            return "OK";
+                        default:
+                            return "MISS";
+                    }
+                case AccuracyModel.osuOD8v1:
+                    switch (accuracy)
+                    {
+                        case >= 1.0:
+                            return "MARVELOUS";
+                        case >= 200.0 / 300.0:
+                            return "GREAT";
+                        case >= 100.0 / 300.0:
+                            return "GOOD";
+                        case >= 50.0 / 300.0:
                             return "OK";
                         default:
                             return "MISS";
@@ -167,6 +183,26 @@ namespace C4TX.SDL.Services
                     return 100.0 / 305.0;
                 case <= 133.0:
                     return 50.0 / 305.0;
+                default:
+                    return 0.0;
+            }
+        }
+
+        private double CalculateOsuOD8V1Accuracy(double timeDiff)
+        {
+            // osu! OD8 model
+            switch (timeDiff)
+            {
+                case <= 16.0:
+                    return 300.0 / 300.0;
+                case <= 40.0:
+                    return 300.0 / 300.0;
+                case <= 73.0:
+                    return 200.0 / 300.0;
+                case <= 103.0:
+                    return 100.0 / 300.0;
+                case <= 133.0:
+                    return 50.0 / 300.0;
                 default:
                     return 0.0;
             }

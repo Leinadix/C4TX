@@ -14,6 +14,7 @@ namespace C4TX.SDL.Models
         public List<HitObject> HitObjects { get; set; } = new List<HitObject>();
         public int KeyCount { get; set; }
         public double Length { get; set; } // in milliseconds
+        public double BPM { get; set; } // Beats per minute
         public string MapHash { get; set; } = string.Empty; // SHA256 hash of the map file
         
         public Beatmap()
@@ -47,7 +48,10 @@ namespace C4TX.SDL.Models
         public string SetId { get; set; } = string.Empty;
         public string Path { get; set; } = string.Empty;
         public string Difficulty { get; set; } = string.Empty;
-        
+
+        public double Length { get; set; } // in milliseconds
+        public double BPM { get; set; } // Beats per minute
+
         // Cached difficulty rating - if null, it needs to be calculated
         public double? CachedDifficultyRating { get; set; } = null;
     }

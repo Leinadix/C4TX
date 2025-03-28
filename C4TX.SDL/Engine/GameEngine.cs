@@ -69,10 +69,10 @@ namespace C4TX.SDL.Engine
         private int[] _keyStates = new int[4]; // 0 = not pressed, 1 = pressed, 2 = just released
         private SDL_Scancode[] _keyBindings = new SDL_Scancode[4] 
         { 
-            SDL_Scancode.SDL_SCANCODE_D, 
-            SDL_Scancode.SDL_SCANCODE_F, 
-            SDL_Scancode.SDL_SCANCODE_J, 
-            SDL_Scancode.SDL_SCANCODE_K 
+            SDL_Scancode.SDL_SCANCODE_E, 
+            SDL_Scancode.SDL_SCANCODE_R, 
+            SDL_Scancode.SDL_SCANCODE_O, 
+            SDL_Scancode.SDL_SCANCODE_P 
         };
         
         // Color definitions
@@ -269,14 +269,14 @@ namespace C4TX.SDL.Engine
             }
         }
         
-        private void TryLoadAudio()
+        private void TryLoadAudio(bool silent = false)
         {
             try
             {
                 // Check if we have a beatmap and an audio file
                 if (_currentBeatmap == null || string.IsNullOrEmpty(_currentBeatmap.AudioFilename))
                 {
-                    Console.WriteLine("No audio file specified in beatmap");
+                    if (!silent) Console.WriteLine("No audio file specified in beatmap");
                     return;
                 }
                 
@@ -290,7 +290,7 @@ namespace C4TX.SDL.Engine
                 
                 if (string.IsNullOrEmpty(beatmapDir))
                 {
-                    Console.WriteLine("Could not determine beatmap directory");
+                    if (!silent) Console.WriteLine("Could not determine beatmap directory");
                     return;
                 }
                 
@@ -299,7 +299,7 @@ namespace C4TX.SDL.Engine
                 
                 if (!File.Exists(audioPath))
                 {
-                    Console.WriteLine($"Audio file not found: {audioPath}");
+                    if (!silent) Console.WriteLine($"Audio file not found: {audioPath}");
                     return;
                 }
                 
@@ -324,7 +324,7 @@ namespace C4TX.SDL.Engine
                 
                 if (_audioStream == 0)
                 {
-                    Console.WriteLine($"Failed to create audio stream: {Bass.LastError}");
+                    if (!silent) Console.WriteLine($"Failed to create audio stream: {Bass.LastError}");
                     return;
                 }
                 
@@ -333,7 +333,7 @@ namespace C4TX.SDL.Engine
                 
                 if (_mixerStream == 0)
                 {
-                    Console.WriteLine($"Failed to create tempo stream: {Bass.LastError}");
+                    if (!silent) Console.WriteLine($"Failed to create tempo stream: {Bass.LastError}");
                     Bass.StreamFree(_audioStream);
                     _audioStream = 0;
                     return;
@@ -346,12 +346,12 @@ namespace C4TX.SDL.Engine
                 Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Tempo, (_currentRate - 1.0f) * 100);
                 
                 _audioLoaded = true;
-                
-                Console.WriteLine($"Audio loaded: {audioPath}");
+
+                if (!silent) Console.WriteLine($"Audio loaded: {audioPath}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading audio: {ex.Message}");
+                if (!silent) Console.WriteLine($"Error loading audio: {ex.Message}");
                 _audioLoaded = false;
             }
         }
@@ -526,6 +526,25 @@ namespace C4TX.SDL.Engine
                 
                 // Ensure we're in menu state regardless of whether maps were found
                 _currentState = GameState.Menu;
+
+                // Precalculate difficulty ratings for all beatmaps
+                for (int i = 0; i < _availableBeatmapSets.Count; i++)
+                {
+                    var set = _availableBeatmapSets[i];
+                    for (int j = 0; j < set.Beatmaps.Count; j++)
+                    {
+                        var info = set.Beatmaps[j];
+                        if (!info.CachedDifficultyRating.HasValue)
+                        {
+                            LoadBeatmap(info.Path, true);
+                            info.CachedDifficultyRating = (new DifficultyRatingService()).CalculateDifficulty(_currentBeatmap!, 1.0);
+                            SDL_Delay(1); // Ensure we don't hog the CPU
+                        }
+                    }
+                }
+
+                LoadBeatmap(_availableBeatmapSets[0].Beatmaps[0].Path);
+
             }
             catch (Exception ex)
             {
@@ -536,7 +555,7 @@ namespace C4TX.SDL.Engine
         }
         
         // Load a beatmap
-        public void LoadBeatmap(string beatmapPath)
+        public void LoadBeatmap(string beatmapPath, bool silent = false)
         {
             try
             {
@@ -568,7 +587,7 @@ namespace C4TX.SDL.Engine
                 
                 // Calculate map hash for score matching
                 string mapHash = _beatmapService.CalculateBeatmapHash(beatmapPath);
-                Console.WriteLine($"Map hash: {mapHash}");
+                if (!silent) Console.WriteLine($"Map hash: {mapHash}");
                 
                 // Store the map hash in the beatmap object
                 _currentBeatmap.MapHash = mapHash;
@@ -576,15 +595,15 @@ namespace C4TX.SDL.Engine
                 // If we found the beatmap info, ensure we use the same ID
                 if (beatmapInfo != null)
                 {
-                    Console.WriteLine($"Using beatmapInfo ID: {beatmapInfo.Id} for consistency");
+                    if (!silent) Console.WriteLine($"Using beatmapInfo ID: {beatmapInfo.Id} for consistency");
                     _currentBeatmap.Id = beatmapInfo.Id;
                 }
                 else
                 {
-                    Console.WriteLine($"No matching beatmapInfo found for path: {beatmapPath}");
+                    if (!silent) Console.WriteLine($"No matching beatmapInfo found for path: {beatmapPath}");
                 }
-                
-                Console.WriteLine($"Loaded beatmap with ID: {_currentBeatmap.Id}");
+
+                if (!silent) Console.WriteLine($"Loaded beatmap with ID: {_currentBeatmap.Id}");
                 
                 // Reset game state
                 _score = 0;
@@ -603,25 +622,25 @@ namespace C4TX.SDL.Engine
                     if (beatmapDirectory != null)
                     {
                         _currentAudioPath = Path.Combine(beatmapDirectory, _currentBeatmap.AudioFilename);
-                        Console.WriteLine($"Audio file: {_currentAudioPath}");
+                        if (!silent) Console.WriteLine($"Audio file: {_currentAudioPath}");
                         
                         // Try to preload the audio file
-                        TryLoadAudio();
+                        TryLoadAudio(silent);
                     }
                 }
                 else
                 {
                     _currentAudioPath = null;
                     _audioLoaded = false;
-                    Console.WriteLine("No audio file specified in the beatmap");
+                    if (!silent) Console.WriteLine("No audio file specified in the beatmap");
                 }
-                
-                Console.WriteLine($"Loaded beatmap: {_currentBeatmap.Title} - {_currentBeatmap.Artist} [{_currentBeatmap.Version}]");
-                Console.WriteLine($"Hit objects: {_currentBeatmap.HitObjects.Count}");
+
+                if (!silent) Console.WriteLine($"Loaded beatmap: {_currentBeatmap.Title} - {_currentBeatmap.Artist} [{_currentBeatmap.Version}]");
+                if (!silent) Console.WriteLine($"Hit objects: {_currentBeatmap.HitObjects.Count}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading beatmap: {ex.Message}");
+                if (!silent) Console.WriteLine($"Error loading beatmap: {ex.Message}");
             }
         }
         
@@ -682,7 +701,7 @@ namespace C4TX.SDL.Engine
             if (_currentBeatmap.HitObjects.Count > 0)
             {
                 var lastNote = _currentBeatmap.HitObjects.OrderByDescending(n => n.StartTime).First();
-                _songEndTime = lastNote.StartTime + 5000; // Add 5 seconds after the last note
+                _songEndTime = GetRateAdjustedStartTime(lastNote.StartTime) + 2000; // Add 5 seconds after the last note
             }
             else
             {
@@ -877,18 +896,6 @@ namespace C4TX.SDL.Engine
                     }
                 }
                 
-                // Rate adjustment during gameplay
-                if (scancode == SDL_Scancode.SDL_SCANCODE_1)
-                {
-                    AdjustRate(-RATE_STEP);
-                    return;
-                }
-                else if (scancode == SDL_Scancode.SDL_SCANCODE_2)
-                {
-                    AdjustRate(RATE_STEP);
-                    return;
-                }
-                
                 // Escape to stop
                 if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
                 {
@@ -896,7 +903,7 @@ namespace C4TX.SDL.Engine
                 }
                 
                 // P to pause
-                if (scancode == SDL_Scancode.SDL_SCANCODE_P)
+                if (scancode == SDL_Scancode.SDL_SCANCODE_F1)
                 {
                     // Only allow pausing after the countdown
                     if (_currentTime >= START_DELAY_MS)
@@ -908,7 +915,7 @@ namespace C4TX.SDL.Engine
             else if (_currentState == GameState.Paused)
             {
                 // P to unpause
-                if (scancode == SDL_Scancode.SDL_SCANCODE_P)
+                if (scancode == SDL_Scancode.SDL_SCANCODE_F1)
                 {
                     TogglePause();
                 }
@@ -1541,7 +1548,7 @@ namespace C4TX.SDL.Engine
                         _combo++;
                         _maxCombo = Math.Max(_maxCombo, _combo);
                         
-                        Console.WriteLine($"Hit! Score: {_score}, Combo: {_combo}, Accuracy: {noteAccuracy:P2}, Judgment: {judgment}");
+                        //Console.WriteLine($"Hit! Score: {_score}, Combo: {_combo}, Accuracy: {noteAccuracy:P2}, Judgment: {judgment}");
                         break;
                     }
                 }
@@ -1623,7 +1630,7 @@ namespace C4TX.SDL.Engine
                             _totalAccuracy += 0;
                             _currentAccuracy = _totalAccuracy / _totalNotes;
                             
-                            Console.WriteLine("Miss!");
+                            //Console.WriteLine("Miss!");
                             _activeNotes.RemoveAt(i);
                         }
                         else if (adjustedStartTime < _currentTime - 500) // Remove hit notes after a while
@@ -2475,6 +2482,9 @@ namespace C4TX.SDL.Engine
                 case AccuracyModel.osuOD8:
                     DrawOsuOD8JudgmentBoundaries(graphX, graphY, graphWidth, graphHeight, centerY);
                     break;
+                case AccuracyModel.osuOD8v1:
+                    DrawOsuOD8V1JudgmentBoundaries(graphX, graphY, graphWidth, graphHeight, centerY);
+                    break;
             }
         }
         
@@ -2743,7 +2753,58 @@ namespace C4TX.SDL.Engine
             // Draw explanation
             RenderText("osu! OD8: Fixed millisecond timing windows with specific thresholds", graphX + graphWidth/2, graphY + graphHeight + 70, _textColor, false, true);
         }
-        
+
+
+        private void DrawOsuOD8V1JudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        {
+            // osu! OD8 model has specific ms thresholds
+            double[] thresholds = { 16.0, 40.0, 73.0, 103.0, 133.0 };
+            double[] values = { 300.0 / 300.0, 300.0 / 300.0, 200.0 / 300.0, 100.0 / 300.0, 50.0 / 300.0, 0.0 };
+
+            string[] judgments = {
+                "MARVELOUS (±16ms)",
+                "PERFECT (±40ms)",
+                "GREAT (±73ms)",
+                "GOOD (±103ms)",
+                "OK (±133ms)",
+                "MISS (>±133ms)"
+            };
+
+            SDL_Color[] colors = {
+                new SDL_Color { r = 255, g = 255, b = 255, a = 100 }, // White - Marvelous 
+                new SDL_Color { r = 230, g = 230, b = 80, a = 100 },  // Yellow - Perfect
+                new SDL_Color { r = 80, g = 230, b = 80, a = 100 },   // Green - Great
+                new SDL_Color { r = 80, g = 180, b = 230, a = 100 },  // Blue - Good
+                new SDL_Color { r = 230, g = 80, b = 80, a = 100 }    // Red - OK
+            };
+
+            // Draw judgment boundaries
+            for (int i = 0; i < thresholds.Length; i++)
+            {
+                // Calculate pixel positions (scale to graph height)
+                int pixelOffset = (int)(thresholds[i] * graphHeight / 2 / _hitWindowMs);
+
+                // Ensure boundaries stay within graph
+                pixelOffset = Math.Min(pixelOffset, graphHeight / 2);
+
+                // Draw positive threshold line (late hits)
+                int posY = centerY - pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+
+                // Draw judgment label on right side
+                RenderText(judgments[i], graphX + graphWidth + 10, posY, _textColor, false, false);
+
+                // Draw negative threshold line (early hits)
+                int negY = centerY + pixelOffset;
+                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+            }
+
+            // Draw explanation
+            RenderText("osu! OD8: Fixed millisecond timing windows with specific thresholds", graphX + graphWidth / 2, graphY + graphHeight + 70, _textColor, false, true);
+        }
+
         // Toggle fullscreen mode
         private void ToggleFullscreen()
         {
@@ -3199,48 +3260,6 @@ namespace C4TX.SDL.Engine
                 
                 SDL_RenderFillRect(_renderer, ref rect);
             }
-            
-            // Optional: Add some animated particles or stars for extra visual appeal
-            DrawBackgroundParticles();
-        }
-        
-        // Draw animated background particles/stars
-        private void DrawBackgroundParticles()
-        {
-            // Use animation time to make particles move
-            int numParticles = 30;
-            double particleSpeed = 0.05;
-            int maxParticleSize = 3;
-            
-            SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 150);
-            
-            // Use a deterministic pattern based on animation time
-            Random random = new Random(42); // Fixed seed for deterministic pattern
-            for (int i = 0; i < numParticles; i++)
-            {
-                // Determine particle position
-                double baseX = random.NextDouble() * _windowWidth;
-                double baseY = random.NextDouble() * _windowHeight;
-                
-                // Make particles move based on time
-                double offset = (_menuAnimationTime * particleSpeed + i * 100) % 1000 / 1000.0;
-                double x = (baseX + offset * 100) % _windowWidth;
-                double y = (baseY + offset * 50) % _windowHeight;
-                
-                // Size varies by position
-                int size = (int)(maxParticleSize * (0.5 + 0.5 * Math.Sin(offset * Math.PI * 2)));
-                
-                // Draw particle
-                SDL_Rect rect = new SDL_Rect
-                {
-                    x = (int)x,
-                    y = (int)y,
-                    w = size,
-                    h = size
-                };
-                
-                SDL_RenderFillRect(_renderer, ref rect);
-            }
         }
         
         // Draw a header with title and subtitle
@@ -3590,17 +3609,13 @@ namespace C4TX.SDL.Engine
             int artistY = titleY + 40;
             RenderText(selectedSet.Artist, x + width / 2, artistY, _textColor, false, true);
             
-            // Draw rate information
+            // Draw bpm information
             int rateY = artistY + 40;
-            // RenderText($"Rate: {_currentRate:F1}x", x + width / 2, rateY, _accentColor, false, true);
-            // RenderText("(1/2 keys to adjust)", x + width / 2, rateY + 25, _mutedTextColor, false, true);
-            
-            // Draw difficulty selection instructions
+
+
+            RenderText((selectedSet.Beatmaps[_selectedDifficultyIndex].BPM * _currentRate).ToString("F2") + " BPM", x + width / 2, rateY, _textColor, false, true);
+
             int diffY = rateY + 70;
-            // RenderText(
-            //     _isSelectingDifficulty ? "Select Difficulty:" : "Press ENTER to select difficulty",
-            //     x + width / 2, diffY, _textColor, false, true
-            // );
             
             if (_isSelectingDifficulty)
             {
@@ -3654,8 +3669,8 @@ namespace C4TX.SDL.Engine
             // If we have a cached hash for this song, show the score section
             if (!string.IsNullOrEmpty(_cachedScoreMapHash))
             {
-                int scoresY = height - 80;
-                int scoresTextY = scoresY + 40;
+                int scoresY = height;
+                int scoresTextY = scoresY + 20;
                 
                 if (_cachedScores.Count > 0)
                 {
@@ -3752,7 +3767,7 @@ namespace C4TX.SDL.Engine
                 int columnSpacing = (width / 5);
                 
                 RenderText("Date", x + PANEL_PADDING , headerY, _primaryColor, false, false);
-                RenderText("Score", 20 + x + PANEL_PADDING + columnSpacing, headerY, _primaryColor, false, false);
+                RenderText("Score", 50 + x + PANEL_PADDING + columnSpacing, headerY, _primaryColor, false, false);
                 RenderText("Accuracy", x + PANEL_PADDING + columnSpacing * 2, headerY, _primaryColor, false, false);
                 RenderText("Combo", x + PANEL_PADDING + columnSpacing * 3, headerY, _primaryColor, false, false);
                 RenderText("Rate", x + PANEL_PADDING + columnSpacing * 4, headerY, _primaryColor, false, false);
@@ -3808,7 +3823,7 @@ namespace C4TX.SDL.Engine
                     
                     // Draw row
                     RenderText(date, x + PANEL_PADDING, scoreY, rowColor, false, false);
-                    RenderText(scoreText, 20 + x + PANEL_PADDING + columnSpacing, scoreY, rowColor, false, false);
+                    RenderText(scoreText, 50 + x + PANEL_PADDING + columnSpacing, scoreY, rowColor, false, false);
                     RenderText(accuracy, x + PANEL_PADDING + columnSpacing * 2, scoreY, rowColor, false, false);
                     RenderText(combo, x + PANEL_PADDING + columnSpacing * 3, scoreY, rowColor, false, false);
                     RenderText(score.PlaybackRate.ToString("F1"), x + PANEL_PADDING + columnSpacing * 4, scoreY, rowColor, false, false);

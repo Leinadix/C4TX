@@ -16,6 +16,7 @@ namespace C4TX.SDL.Models
         Stepwise, // Discrete steps (osu!-like)
         Exponential, // Exponential falloff (very precise at center)
         osuOD8, // osu! OD8 model
+        osuOD8v1, // osu! OD8 v1 model
     }
 
     public class GameSettings

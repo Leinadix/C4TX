@@ -133,205 +133,212 @@ namespace C4TX.SDL.Services {
 
         public static double Calculate(HitObject[] hitObjects, double rate = 1.0)
         {
-            // Convert HitObjects to the tuple format used in the algorithm
-            var noteSeq = new List<(int, int, int)>();
-            foreach (var obj in hitObjects)
+            try
             {
-                int column = obj.Column;
-                int startTime = (int)obj.StartTime;
-                int endTime = (int)obj.EndTime;
+                // Convert HitObjects to the tuple format used in the algorithm
+                var noteSeq = new List<(int, int, int)>();
+                foreach (var obj in hitObjects)
+                {
+                    int column = obj.Column;
+                    int startTime = (int)obj.StartTime;
+                    int endTime = (int)obj.EndTime;
 
-                startTime = (int)Math.Floor(startTime / rate);
-                if (endTime >= 0)
-                    endTime = (int)Math.Floor(endTime / rate);
-                
-                noteSeq.Add((column, startTime, endTime));
-            }
-            
-            // Sort notes by time and then column
-            noteSeq = noteSeq.OrderBy(n => n.Item2).ThenBy(n => n.Item1).ToList();
-            
-            // Basic setup
-            int K = noteSeq.Select(n => n.Item1).Max() + 1; // Number of columns
-            int T = Math.Max(
-                noteSeq.Max(n => n.Item2),
-                noteSeq.Where(n => n.Item3 >= 0).Select(n => n.Item3).DefaultIfEmpty(0).Max()
-            ) + 1;
-            
-            // Hit leniency x
-            double x = 0.3 * Math.Pow((64.5 - Math.Ceiling((double)(K * 3))) / 500, 0.5);
-            x = Math.Min(x, 0.6 * (x - 0.09) + 0.09);
-            
-            // Group notes by column
-            var noteDict = new Dictionary<int, List<(int, int, int)>>();
-            foreach (var note in noteSeq)
-            {
-                int col = note.Item1;
-                if (!noteDict.ContainsKey(col))
-                    noteDict[col] = new List<(int, int, int)>();
-                noteDict[col].Add(note);
-            }
-            
-            var noteSeqByColumn = noteDict.OrderBy(kvp => kvp.Key)
+                    startTime = (int)Math.Floor(startTime / rate);
+                    if (endTime >= 0)
+                        endTime = (int)Math.Floor(endTime / rate);
+
+                    noteSeq.Add((column, startTime, endTime));
+                }
+
+                // Sort notes by time and then column
+                noteSeq = noteSeq.OrderBy(n => n.Item2).ThenBy(n => n.Item1).ToList();
+
+                // Basic setup
+                int K = noteSeq.Select(n => n.Item1).Max() + 1; // Number of columns
+                int T = Math.Max(
+                    noteSeq.Max(n => n.Item2),
+                    noteSeq.Where(n => n.Item3 >= 0).Select(n => n.Item3).DefaultIfEmpty(0).Max()
+                ) + 1;
+
+                // Hit leniency x
+                double x = 0.3 * Math.Pow((64.5 - Math.Ceiling((double)(K * 3))) / 500, 0.5);
+                x = Math.Min(x, 0.6 * (x - 0.09) + 0.09);
+
+                // Group notes by column
+                var noteDict = new Dictionary<int, List<(int, int, int)>>();
+                foreach (var note in noteSeq)
+                {
+                    int col = note.Item1;
+                    if (!noteDict.ContainsKey(col))
+                        noteDict[col] = new List<(int, int, int)>();
+                    noteDict[col].Add(note);
+                }
+
+                var noteSeqByColumn = noteDict.OrderBy(kvp => kvp.Key)
+                                            .Select(kvp => kvp.Value)
+                                            .ToList();
+
+                // Long notes
+                var lnSeq = noteSeq.Where(n => n.Item3 >= 0).ToList();
+                var tailSeq = lnSeq.OrderBy(n => n.Item3).ToList();
+
+                var lnDict = new Dictionary<int, List<(int, int, int)>>();
+                foreach (var note in lnSeq)
+                {
+                    int col = note.Item1;
+                    if (!lnDict.ContainsKey(col))
+                        lnDict[col] = new List<(int, int, int)>();
+                    lnDict[col].Add(note);
+                }
+
+                var lnSeqByColumn = lnDict.OrderBy(kvp => kvp.Key)
                                         .Select(kvp => kvp.Value)
                                         .ToList();
-            
-            // Long notes
-            var lnSeq = noteSeq.Where(n => n.Item3 >= 0).ToList();
-            var tailSeq = lnSeq.OrderBy(n => n.Item3).ToList();
-            
-            var lnDict = new Dictionary<int, List<(int, int, int)>>();
-            foreach (var note in lnSeq)
-            {
-                int col = note.Item1;
-                if (!lnDict.ContainsKey(col))
-                    lnDict[col] = new List<(int, int, int)>();
-                lnDict[col].Add(note);
-            }
-            
-            var lnSeqByColumn = lnDict.OrderBy(kvp => kvp.Key)
-                                    .Select(kvp => kvp.Value)
-                                    .ToList();
 
-            // Get corners for different components
-            var (allCorners, baseCorners, aCorners) = GetCorners(T, noteSeq);
-            
-            // Key usage calculations
-            var keyUsage = GetKeyUsage(K, T, noteSeq, baseCorners);
-            var activeColumns = new List<int>[baseCorners.Length];
-            for (int i = 0; i < baseCorners.Length; i++)
-            {
-                activeColumns[i] = new List<int>();
-                for (int k = 0; k < K; k++)
+                // Get corners for different components
+                var (allCorners, baseCorners, aCorners) = GetCorners(T, noteSeq);
+
+                // Key usage calculations
+                var keyUsage = GetKeyUsage(K, T, noteSeq, baseCorners);
+                var activeColumns = new List<int>[baseCorners.Length];
+                for (int i = 0; i < baseCorners.Length; i++)
                 {
-                    if (keyUsage[k][i])
-                        activeColumns[i].Add(k);
+                    activeColumns[i] = new List<int>();
+                    for (int k = 0; k < K; k++)
+                    {
+                        if (keyUsage[k][i])
+                            activeColumns[i].Add(k);
+                    }
                 }
+
+                var keyUsage400 = GetKeyUsage400(K, T, noteSeq, baseCorners);
+                var anchor = ComputeAnchor(K, keyUsage400, baseCorners);
+
+                var (deltaKs, jbar) = ComputeJbar(K, T, x, noteSeqByColumn, baseCorners);
+                jbar = InterpValues(allCorners, baseCorners, jbar);
+
+                var xbar = ComputeXbar(K, T, x, noteSeqByColumn, activeColumns, baseCorners);
+                xbar = InterpValues(allCorners, baseCorners, xbar);
+
+                // LN bodies sparse representation
+                var lnRep = LnBodiesCountSparseRepresentation(lnSeq, T);
+
+                var pbar = ComputePbar(K, T, x, noteSeq, lnRep, anchor, baseCorners);
+                pbar = InterpValues(allCorners, baseCorners, pbar);
+
+                var abar = ComputeAbar(K, T, x, noteSeqByColumn, activeColumns, deltaKs, aCorners, baseCorners);
+                abar = InterpValues(allCorners, aCorners, abar);
+
+                var rbar = ComputeRbar(K, T, x, noteSeqByColumn, tailSeq, baseCorners);
+                rbar = InterpValues(allCorners, baseCorners, rbar);
+
+                var (cStep, ksStep) = ComputeCAndKs(K, T, noteSeq, keyUsage, baseCorners);
+                var cArr = StepInterp(allCorners, baseCorners, cStep);
+                var ksArr = StepInterp(allCorners, baseCorners, ksStep);
+
+                // Final Calculations
+                var sAll = new double[allCorners.Length];
+                var tAll = new double[allCorners.Length];
+                var dAll = new double[allCorners.Length];
+
+                for (int i = 0; i < allCorners.Length; i++)
+                {
+                    double term1 = Math.Pow(abar[i], 3.0 / ksArr[i]) * Math.Min(jbar[i], 8 + 0.85 * jbar[i]);
+                    double term2 = Math.Pow(abar[i], 2.0 / 3.0) * (0.8 * pbar[i] + rbar[i] * 35 / (cArr[i] + 8));
+
+                    sAll[i] = Math.Pow(0.4 * Math.Pow(term1, 1.5) + (1 - 0.4) * Math.Pow(term2, 1.5), 2.0 / 3.0);
+                    tAll[i] = (Math.Pow(abar[i], 3.0 / ksArr[i]) * xbar[i]) / (xbar[i] + sAll[i] + 1);
+                    dAll[i] = 2.7 * Math.Pow(sAll[i], 0.5) * Math.Pow(tAll[i], 1.5) + sAll[i] * 0.27;
+                }
+
+                // Calculate gaps for weighting
+                var gaps = new double[allCorners.Length];
+                gaps[0] = (allCorners[1] - allCorners[0]) / 2.0;
+                gaps[allCorners.Length - 1] = (allCorners[allCorners.Length - 1] - allCorners[allCorners.Length - 2]) / 2.0;
+
+                for (int i = 1; i < allCorners.Length - 1; i++)
+                {
+                    gaps[i] = (allCorners[i + 1] - allCorners[i - 1]) / 2.0;
+                }
+
+                // Effective weights and sorting
+                var effectiveWeights = new double[allCorners.Length];
+                for (int i = 0; i < allCorners.Length; i++)
+                {
+                    effectiveWeights[i] = cArr[i] * gaps[i];
+                }
+
+                // Sort difficulties and weights
+                var sorted = Enumerable.Range(0, dAll.Length)
+                                    .OrderBy(i => dAll[i])
+                                    .ToArray();
+                var dSorted = sorted.Select(i => dAll[i]).ToArray();
+                var wSorted = sorted.Select(i => effectiveWeights[i]).ToArray();
+
+                // Cumulative weights
+                var cumWeights = new double[wSorted.Length];
+                cumWeights[0] = wSorted[0];
+                for (int i = 1; i < wSorted.Length; i++)
+                {
+                    cumWeights[i] = cumWeights[i - 1] + wSorted[i];
+                }
+
+                double totalWeight = cumWeights[cumWeights.Length - 1];
+                var normCumWeights = cumWeights.Select(w => w / totalWeight).ToArray();
+
+                // Target percentiles
+                var targetPercentiles = new[] { 0.945, 0.935, 0.925, 0.915, 0.845, 0.835, 0.825, 0.815 };
+                var indices = new int[targetPercentiles.Length];
+
+                for (int i = 0; i < targetPercentiles.Length; i++)
+                {
+                    indices[i] = Array.BinarySearch(normCumWeights, targetPercentiles[i]);
+                    if (indices[i] < 0)
+                        indices[i] = ~indices[i];
+                    indices[i] = Math.Min(indices[i], dSorted.Length - 1);
+                }
+
+                // Calculate percentiles
+                double percentile93 = 0;
+                for (int i = 0; i < 4; i++)
+                {
+                    percentile93 += dSorted[indices[i]];
+                }
+                percentile93 /= 4;
+
+                double percentile83 = 0;
+                for (int i = 4; i < 8; i++)
+                {
+                    percentile83 += dSorted[indices[i]];
+                }
+                percentile83 /= 4;
+
+                // Weighted mean calculation
+                double numerator = 0;
+                double denominator = 0;
+                for (int i = 0; i < dSorted.Length; i++)
+                {
+                    numerator += Math.Pow(dSorted[i], 5) * wSorted[i];
+                    denominator += wSorted[i];
+                }
+                double weightedMean = Math.Pow(numerator / denominator, 1.0 / 5.0);
+
+                // Final SR calculation
+                double sr = (0.88 * percentile93) * 0.25 + (0.94 * percentile83) * 0.2 + weightedMean * 0.55;
+                sr = Math.Pow(sr, 1.0) / Math.Pow(8, 1.0) * 8;
+
+                double totalNotes = noteSeq.Count + 0.5 * lnSeq.Sum(n => Math.Min(n.Item3 - n.Item2, 1000) / 200.0);
+                sr *= totalNotes / (totalNotes + 60);
+
+                sr = RescaleHigh(sr);
+                sr *= 0.975;
+
+                return sr;
             }
-            
-            var keyUsage400 = GetKeyUsage400(K, T, noteSeq, baseCorners);
-            var anchor = ComputeAnchor(K, keyUsage400, baseCorners);
-            
-            var (deltaKs, jbar) = ComputeJbar(K, T, x, noteSeqByColumn, baseCorners);
-            jbar = InterpValues(allCorners, baseCorners, jbar);
-            
-            var xbar = ComputeXbar(K, T, x, noteSeqByColumn, activeColumns, baseCorners);
-            xbar = InterpValues(allCorners, baseCorners, xbar);
-            
-            // LN bodies sparse representation
-            var lnRep = LnBodiesCountSparseRepresentation(lnSeq, T);
-            
-            var pbar = ComputePbar(K, T, x, noteSeq, lnRep, anchor, baseCorners);
-            pbar = InterpValues(allCorners, baseCorners, pbar);
-            
-            var abar = ComputeAbar(K, T, x, noteSeqByColumn, activeColumns, deltaKs, aCorners, baseCorners);
-            abar = InterpValues(allCorners, aCorners, abar);
-            
-            var rbar = ComputeRbar(K, T, x, noteSeqByColumn, tailSeq, baseCorners);
-            rbar = InterpValues(allCorners, baseCorners, rbar);
-            
-            var (cStep, ksStep) = ComputeCAndKs(K, T, noteSeq, keyUsage, baseCorners);
-            var cArr = StepInterp(allCorners, baseCorners, cStep);
-            var ksArr = StepInterp(allCorners, baseCorners, ksStep);
-            
-            // Final Calculations
-            var sAll = new double[allCorners.Length];
-            var tAll = new double[allCorners.Length];
-            var dAll = new double[allCorners.Length];
-            
-            for (int i = 0; i < allCorners.Length; i++)
+            catch
             {
-                double term1 = Math.Pow(abar[i], 3.0 / ksArr[i]) * Math.Min(jbar[i], 8 + 0.85 * jbar[i]);
-                double term2 = Math.Pow(abar[i], 2.0/3.0) * (0.8 * pbar[i] + rbar[i] * 35 / (cArr[i] + 8));
-                
-                sAll[i] = Math.Pow(0.4 * Math.Pow(term1, 1.5) + (1 - 0.4) * Math.Pow(term2, 1.5), 2.0/3.0);
-                tAll[i] = (Math.Pow(abar[i], 3.0 / ksArr[i]) * xbar[i]) / (xbar[i] + sAll[i] + 1);
-                dAll[i] = 2.7 * Math.Pow(sAll[i], 0.5) * Math.Pow(tAll[i], 1.5) + sAll[i] * 0.27;
+                return -1.0;
             }
-            
-            // Calculate gaps for weighting
-            var gaps = new double[allCorners.Length];
-            gaps[0] = (allCorners[1] - allCorners[0]) / 2.0;
-            gaps[allCorners.Length - 1] = (allCorners[allCorners.Length - 1] - allCorners[allCorners.Length - 2]) / 2.0;
-            
-            for (int i = 1; i < allCorners.Length - 1; i++)
-            {
-                gaps[i] = (allCorners[i + 1] - allCorners[i - 1]) / 2.0;
-            }
-            
-            // Effective weights and sorting
-            var effectiveWeights = new double[allCorners.Length];
-            for (int i = 0; i < allCorners.Length; i++)
-            {
-                effectiveWeights[i] = cArr[i] * gaps[i];
-            }
-            
-            // Sort difficulties and weights
-            var sorted = Enumerable.Range(0, dAll.Length)
-                                .OrderBy(i => dAll[i])
-                                .ToArray();
-            var dSorted = sorted.Select(i => dAll[i]).ToArray();
-            var wSorted = sorted.Select(i => effectiveWeights[i]).ToArray();
-            
-            // Cumulative weights
-            var cumWeights = new double[wSorted.Length];
-            cumWeights[0] = wSorted[0];
-            for (int i = 1; i < wSorted.Length; i++)
-            {
-                cumWeights[i] = cumWeights[i - 1] + wSorted[i];
-            }
-            
-            double totalWeight = cumWeights[cumWeights.Length - 1];
-            var normCumWeights = cumWeights.Select(w => w / totalWeight).ToArray();
-            
-            // Target percentiles
-            var targetPercentiles = new[] { 0.945, 0.935, 0.925, 0.915, 0.845, 0.835, 0.825, 0.815 };
-            var indices = new int[targetPercentiles.Length];
-            
-            for (int i = 0; i < targetPercentiles.Length; i++)
-            {
-                indices[i] = Array.BinarySearch(normCumWeights, targetPercentiles[i]);
-                if (indices[i] < 0)
-                    indices[i] = ~indices[i];
-                indices[i] = Math.Min(indices[i], dSorted.Length - 1);
-            }
-            
-            // Calculate percentiles
-            double percentile93 = 0;
-            for (int i = 0; i < 4; i++)
-            {
-                percentile93 += dSorted[indices[i]];
-            }
-            percentile93 /= 4;
-            
-            double percentile83 = 0;
-            for (int i = 4; i < 8; i++)
-            {
-                percentile83 += dSorted[indices[i]];
-            }
-            percentile83 /= 4;
-            
-            // Weighted mean calculation
-            double numerator = 0;
-            double denominator = 0;
-            for (int i = 0; i < dSorted.Length; i++)
-            {
-                numerator += Math.Pow(dSorted[i], 5) * wSorted[i];
-                denominator += wSorted[i];
-            }
-            double weightedMean = Math.Pow(numerator / denominator, 1.0 / 5.0);
-            
-            // Final SR calculation
-            double sr = (0.88 * percentile93) * 0.25 + (0.94 * percentile83) * 0.2 + weightedMean * 0.55;
-            sr = Math.Pow(sr, 1.0) / Math.Pow(8, 1.0) * 8;
-            
-            double totalNotes = noteSeq.Count + 0.5 * lnSeq.Sum(n => Math.Min(n.Item3 - n.Item2, 1000) / 200.0);
-            sr *= totalNotes / (totalNotes + 60);
-            
-            sr = RescaleHigh(sr);
-            sr *= 0.975;
-            
-            return sr;
         }
 
         private static (double[], double[], double[]) GetCorners(int T, List<(int, int, int)> noteSeq)

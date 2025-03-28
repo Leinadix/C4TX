@@ -93,7 +93,9 @@ namespace C4TX.SDL.Services
                                 Id = Path.GetFileNameWithoutExtension(osuFile),
                                 SetId = setId,
                                 Path = osuFile,
-                                Difficulty = GetDifficultyFromFilename(osuFile)
+                                Difficulty = GetDifficultyFromFilename(osuFile),
+                                Length = LoadBeatmapFromFile(osuFile).Length,
+                                BPM = LoadBeatmapFromFile(osuFile).BPM
                             };
 
                             beatmapSet.Beatmaps.Add(beatmapInfo);
@@ -173,10 +175,12 @@ namespace C4TX.SDL.Services
                 {
                     string? line;
                     bool inHitObjects = false;
+                    bool intTimingPoints = false;
                     double maxTime = 0;
                     bool isMania = false;
                     int keyCount = 4; // Default to 4K
-
+                    List<double> bpms = new();
+                    List<double> times = new();
                     while ((line = reader.ReadLine()) != null)
                     {
                         // Check for mania mode and key count
@@ -192,10 +196,40 @@ namespace C4TX.SDL.Services
                             keyCount = int.Parse(line.Substring(11).Trim());
                             beatmap.KeyCount = keyCount;
                         }
+                        else if (line == "[TimingPoints]")
+                        {
+                            intTimingPoints = true;
+                            continue;
+                        }
                         else if (line == "[HitObjects]")
                         {
+                            intTimingPoints = false;
                             inHitObjects = true;
                             continue;
+                        }
+
+                        if (intTimingPoints && !string.IsNullOrWhiteSpace(line))
+                        {
+                            try
+                            {
+                                var parts = line.Split(',');
+                                
+                                if (parts.Length > 8)
+                                    continue;
+
+                                if (parts[6] == "1")
+                                {
+
+                                    bpms.Add(60000.0 / double.Parse(parts[1].Replace(".", ",")));
+                                    times.Add(double.Parse(parts[0].Replace(".", ",")));
+
+                                    //Console.WriteLine("BPM: " + double.Parse(parts[1].Replace(".", ",")));
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Error parsing hit object: {ex.Message}");
+                            }
                         }
 
                         if (inHitObjects && !string.IsNullOrWhiteSpace(line))
@@ -256,6 +290,16 @@ namespace C4TX.SDL.Services
                     }
 
                     beatmap.Length = maxTime;
+                    times.Add(maxTime);
+
+                    // Calculate average BPM
+                    double bpm = 0;
+                    for (int i = 0; i < bpms.Count; i++)
+                    {
+                        bpm += bpms[i] * (times[i + 1] - (i == 0 ? 0 : times[i]));
+                    }
+                    beatmap.BPM = bpm / maxTime;
+
                 }
 
                 return beatmap;
