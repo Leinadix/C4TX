@@ -36,13 +36,35 @@ jobs:
     - name: Publish
       run: dotnet publish C4TX.SDL/C4TX.SDL.csproj --configuration Release -o publish/win-x64 --self-contained true -r win-x64 /p:PublishSingleFile=true
     
+    # Add steps to manually copy native DLLs
+    - name: Download and extract SDL2 native DLLs
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Path temp -Force
+        Invoke-WebRequest -Uri https://www.libsdl.org/release/SDL2-2.0.20-win32-x64.zip -OutFile temp/sdl2.zip
+        Expand-Archive -Path temp/sdl2.zip -DestinationPath temp/sdl2
+        Copy-Item -Path temp/sdl2/SDL2.dll -Destination publish/win-x64/
+    
+    - name: Download and extract BASS native DLLs
+      shell: pwsh
+      run: |
+        Invoke-WebRequest -Uri https://www.un4seen.com/files/bass24.zip -OutFile temp/bass.zip
+        Expand-Archive -Path temp/bass.zip -DestinationPath temp/bass
+        Copy-Item -Path temp/bass/x64/bass.dll -Destination publish/win-x64/
+        Invoke-WebRequest -Uri https://www.un4seen.com/files/bassmix24.zip -OutFile temp/bassmix.zip
+        Expand-Archive -Path temp/bassmix.zip -DestinationPath temp/bassmix
+        Copy-Item -Path temp/bassmix/x64/bassmix.dll -Destination publish/win-x64/
+        Invoke-WebRequest -Uri https://www.un4seen.com/files/bassfx24.zip -OutFile temp/bassfx.zip
+        Expand-Archive -Path temp/bassfx.zip -DestinationPath temp/bassfx
+        Copy-Item -Path temp/bassfx/x64/bass_fx.dll -Destination publish/win-x64/
+    
     - name: Generate version
       id: version
       shell: pwsh
       run: |
         $commitCount = (git rev-list --count HEAD)
         $shortSha = (git rev-parse --short HEAD)
-        $version = "1.$commitCount"
+        $version = "1.0.$commitCount"
         echo "VERSION=$version" >> $env:GITHUB_ENV
         echo "RELEASE_TAG=v$version" >> $env:GITHUB_ENV
     
