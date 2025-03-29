@@ -8,6 +8,10 @@ on:
       - 'LICENSE'
       - '.gitignore'
 
+# Add this permissions block
+permissions:
+  contents: write
+  
 jobs:
   build-and-release:
     runs-on: windows-latest
