@@ -33,6 +33,23 @@ namespace C4TX.SDL
                 
                 // Scan for beatmaps (this will show loading animation during processing)
                 BeatmapEngine.ScanForBeatmaps();
+                
+                // Load available profiles
+                GameEngine._availableProfiles = GameEngine._profileService.GetAllProfiles();
+                
+                // If no profiles exist, stay in profile selection mode
+                // Otherwise, if just one profile exists, auto-select it
+                if (GameEngine._availableProfiles.Count == 1)
+                {
+                    GameEngine._username = GameEngine._availableProfiles[0].Username;
+                    GameEngine.LoadSettings();
+                    GameEngine._currentState = GameEngine.GameState.Menu;
+                }
+                else
+                {
+                    GameEngine._currentState = GameEngine.GameState.ProfileSelect;
+                }
+                
                 RenderEngine.ToggleFullscreen();
                 
                 // Remove the automatic game start
@@ -53,7 +70,7 @@ namespace C4TX.SDL
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 // SDL2 DLLs should be in your output folder or in your PATH
-                Console.WriteLine("Running on Windows. Make sure SDL2.dll, SDL2_ttf.dll are in your application folder or PATH.");
+                Console.WriteLine("Running on Windows. Make sure SDL2.dll, SDL2_ttf.dll, and SDL2_image.dll are in your application folder or PATH.");
                 
                 // Additional step: you could add code to copy DLLs from a known location if they aren't found
                 // This would involve checking File.Exists() and File.Copy() operations

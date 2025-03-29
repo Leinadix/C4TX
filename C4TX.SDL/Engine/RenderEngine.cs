@@ -39,6 +39,73 @@ namespace C4TX.SDL.Engine
         public static IntPtr _largeFont;
         public static Dictionary<string, IntPtr> _textTextures = new Dictionary<string, IntPtr>();
 
+        // Dictionary to cache beatmap background textures
+        public static Dictionary<string, IntPtr> _backgroundTextures = new Dictionary<string, IntPtr>();
+        
+        // Load a beatmap background image and convert it to a texture
+        public static IntPtr LoadBackgroundTexture(string beatmapPath, string backgroundFilename)
+        {
+            if (string.IsNullOrEmpty(backgroundFilename))
+                return IntPtr.Zero;
+            
+            string cacheKey = $"{beatmapPath}_{backgroundFilename}";
+            
+            // Return cached texture if available
+            if (_backgroundTextures.ContainsKey(cacheKey) && _backgroundTextures[cacheKey] != IntPtr.Zero)
+                return _backgroundTextures[cacheKey];
+            
+            try
+            {
+                // Calculate the full path to the background file
+                string beatmapDirectory = Path.GetDirectoryName(beatmapPath) ?? "";
+                string fullPath = Path.Combine(beatmapDirectory, backgroundFilename);
+                
+                if (!File.Exists(fullPath))
+                {
+                    Console.WriteLine($"Background image not found: {fullPath}");
+                    return IntPtr.Zero;
+                }
+
+                // Normalize path - SDL sometimes has issues with backslashes on Windows
+                string normalizedPath = fullPath.Replace('\\', '/');
+                
+                // Load the image using SDL_image which supports various formats (PNG, JPG, etc.)
+                IntPtr surface = SDL2.SDL_image.IMG_Load(normalizedPath);
+                if (surface == IntPtr.Zero)
+                {
+                    // Try direct path as fallback
+                    surface = SDL2.SDL_image.IMG_Load(fullPath);
+                    
+                    if (surface == IntPtr.Zero)
+                    {
+                        Console.WriteLine($"Failed to load background image: {SDL_GetError()}");
+                        return IntPtr.Zero;
+                    }
+                }
+                
+                // Create a texture from the surface
+                IntPtr texture = SDL_CreateTextureFromSurface(_renderer, surface);
+                SDL_FreeSurface(surface);
+                
+                if (texture == IntPtr.Zero)
+                {
+                    Console.WriteLine($"Failed to create texture: {SDL_GetError()}");
+                    return IntPtr.Zero;
+                }
+                
+                // Cache the texture
+                _backgroundTextures[cacheKey] = texture;
+                Console.WriteLine($"Loaded background image: {backgroundFilename}");
+                
+                return texture;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading background image: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
         public static bool LoadFonts()
         {
             try
@@ -150,6 +217,9 @@ namespace C4TX.SDL.Engine
             // Render different content based on game state
             switch (_currentState)
             {
+                case GameState.ProfileSelect:
+                    RenderProfileSelection();
+                    break;
                 case GameState.Menu:
                     RenderMenu();
                     break;
@@ -217,23 +287,40 @@ namespace C4TX.SDL.Engine
 
         public static void RenderMenu()
         {
-            // Update animation time for animated effects
-            _menuAnimationTime += _gameTimer.ElapsedMilliseconds;
-
-            // Draw animated background
+            // Draw background
             DrawMenuBackground();
-
-            // Draw header with game title
-            DrawHeader("C4TX", "4K Rhythm Game");
-
-            // Draw main menu content in a panel
+            
+            // Draw the profile info panel in top right corner
             DrawMainMenuPanel();
-
-            // Draw volume indicator if needed
-            if (_showVolumeIndicator)
+            
+            // Draw song selection panel
+            int songPanelWidth = _windowWidth * 3 / 4;
+            int songPanelHeight = _windowHeight - 200;
+            int songPanelX = (_windowWidth - songPanelWidth) / 2;
+            int songPanelY = 130;
+            
+            // Draw song selection panel
+            DrawPanel(songPanelX, songPanelY, songPanelWidth, songPanelHeight, Color._panelBgColor, Color._primaryColor);
+            
+            // Draw song selection content
+            if (_availableBeatmapSets != null && _availableBeatmapSets.Count > 0)
             {
-                RenderVolumeIndicator();
+                int contentY = songPanelY + 20;
+                int contentHeight = songPanelHeight - 60;
+                
+                // Draw song selection with new layout
+                DrawSongSelectionNewLayout(songPanelX + PANEL_PADDING, contentY,
+                    songPanelWidth - (2 * PANEL_PADDING), contentHeight);
             }
+            else
+            {
+                // No songs found message
+                RenderText("No beatmaps found", _windowWidth / 2, songPanelY + 150, Color._errorColor, false, true);
+                RenderText("Place beatmaps in the Songs directory", _windowWidth / 2, songPanelY + 180, Color._mutedTextColor, false, true);
+            }
+            
+            // Draw instruction panel at the bottom
+            DrawInstructionPanel(songPanelX, songPanelY + songPanelHeight + 10, songPanelWidth, 50);
         }
 
         public static void RenderGameplay()
@@ -1664,37 +1751,39 @@ namespace C4TX.SDL.Engine
         // Draw the main menu panel and content
         public static void DrawMainMenuPanel()
         {
-            int panelWidth = _windowWidth * 3 / 4;
-            int panelHeight = _windowHeight - 200;
-            int panelX = (RenderEngine._windowWidth - panelWidth) / 2;
-            int panelY = 130;
+            const int panelWidth = 300;
+            const int panelHeight = 300;
+            int panelX = _windowWidth - panelWidth - PANEL_PADDING;
+            int panelY = PANEL_PADDING;
 
-            // Draw main panel
-            DrawPanel(panelX, panelY, panelWidth, panelHeight, Color._panelBgColor, Color._primaryColor);
+            DrawPanel(panelX, panelY, panelWidth, panelHeight, Color._panelBgColor, Color._accentColor);
 
-            // Draw username section at the top of the panel
-            DrawUsernameSection(panelX + PANEL_PADDING, panelY + PANEL_PADDING,
-                panelWidth - (2 * PANEL_PADDING));
+            // Draw header
+            SDL_Color titleColor = new SDL_Color() { r = 255, g = 255, b = 255, a = 255 };
+            SDL_Color subtitleColor = new SDL_Color() { r = 200, g = 200, b = 255, a = 255 };
+            RenderText("C4TX", panelX + panelWidth / 2, panelY + 50, titleColor, true, true);
+            RenderText("A 4k Rhythm Game", panelX + panelWidth / 2, panelY + 80, subtitleColor, false, true);
 
-            // Draw song selection with new UI layout
-            if (_availableBeatmapSets != null && _availableBeatmapSets.Count > 0)
+            // Draw current profile
+            if (!string.IsNullOrWhiteSpace(_username))
             {
-                int contentY = panelY + 80; // Start below username section
-                int contentHeight = panelHeight - 140; // Leave space for instructions
-
-                // Draw song selection with new layout
-                DrawSongSelectionNewLayout(panelX + PANEL_PADDING, contentY,
-                    panelWidth - (2 * PANEL_PADDING), contentHeight);
+                // Show current profile
+                SDL_Color profileColor = new SDL_Color() { r = 150, g = 200, b = 255, a = 255 };
+                RenderText("Current Profile:", panelX + panelWidth / 2, panelY + 130, Color._textColor, false, true);
+                RenderText(_username, panelX + panelWidth / 2, panelY + 155, profileColor, false, true);
+                RenderText("Press P to switch profile", panelX + panelWidth / 2, panelY + 180, Color._mutedTextColor, false, true);
             }
             else
             {
-                // No songs found message
-                RenderText("No beatmaps found", _windowWidth / 2, panelY + 150, Color._errorColor, false, true);
-                RenderText("Place beatmaps in the Songs directory", _windowWidth / 2, panelY + 180, Color._mutedTextColor, false, true);
+                // Prompt to select a profile
+                SDL_Color warningColor = new SDL_Color() { r = 255, g = 150, b = 150, a = 255 };
+                RenderText("No profile selected", panelX + panelWidth / 2, panelY + 130, warningColor, false, true);
+                RenderText("Press P to select a profile", panelX + panelWidth / 2, panelY + 155, Color._textColor, false, true);
             }
 
-            // Draw instruction panel at the bottom
-            DrawInstructionPanel(panelX, panelY + panelHeight + 10, panelWidth, 50);
+            // Draw menu instructions
+            RenderText("Press S for Settings", panelX + panelWidth / 2, panelY + 210, Color._mutedTextColor, false, true);
+            RenderText("Press F11 for Fullscreen", panelX + panelWidth / 2, panelY + 235, Color._mutedTextColor, false, true);
         }
 
         // New method for song selection with improved layout
@@ -1979,6 +2068,71 @@ namespace C4TX.SDL.Engine
                 RenderText("No difficulties available", x + width / 2, y + height / 2, Color._mutedTextColor, false, true);
                 return;
             }
+            
+            // Try to load the background image if available
+            IntPtr backgroundTexture = IntPtr.Zero;
+            if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.BackgroundFilename))
+            {
+                var beatmapInfo = selectedSet.Beatmaps[_selectedDifficultyIndex];
+                backgroundTexture = LoadBackgroundTexture(beatmapInfo.Path, _currentBeatmap.BackgroundFilename);
+            }
+            
+            // Draw background image if available
+            if (backgroundTexture != IntPtr.Zero)
+            {
+                // Get the texture dimensions
+                uint format;
+                int access, imgWidth, imgHeight;
+                SDL_QueryTexture(backgroundTexture, out format, out access, out imgWidth, out imgHeight);
+                
+                // Create a semi-transparent overlay on the panel
+                SDL_Rect bgRect = new SDL_Rect
+                {
+                    x = x,
+                    y = y,
+                    w = width,
+                    h = height
+                };
+                
+                // Create a dark panel for text legibility
+                SDL_SetRenderDrawColor(_renderer, 0, 0, 0, 180);
+                SDL_RenderFillRect(_renderer, ref bgRect);
+                
+                // Calculate aspect ratio to maintain proportions
+                float imgAspect = (float)imgWidth / imgHeight;
+                float panelAspect = (float)width / height;
+                
+                SDL_Rect destRect;
+                if (imgAspect > panelAspect)
+                {
+                    // Image is wider than panel
+                    int scaledHeight = (int)(width / imgAspect);
+                    destRect = new SDL_Rect
+                    {
+                        x = x,
+                        y = y + (height - scaledHeight) / 2,
+                        w = width,
+                        h = scaledHeight
+                    };
+                }
+                else
+                {
+                    // Image is taller than panel
+                    int scaledWidth = (int)(height * imgAspect);
+                    destRect = new SDL_Rect
+                    {
+                        x = x + (width - scaledWidth) / 2,
+                        y = y,
+                        w = scaledWidth,
+                        h = height
+                    };
+                }
+                
+                // Draw the background image with reduced opacity
+                SDL_SetTextureAlphaMod(backgroundTexture, 128);
+                SDL_RenderCopy(_renderer, backgroundTexture, IntPtr.Zero, ref destRect);
+                SDL_SetTextureAlphaMod(backgroundTexture, 255);
+            }
 
             // Draw song title and artist
             int titleY = y + 30;
@@ -1989,81 +2143,32 @@ namespace C4TX.SDL.Engine
 
             // Draw bpm information
             int rateY = artistY + 40;
-
-
             RenderText((selectedSet.Beatmaps[_selectedDifficultyIndex].BPM * _currentRate).ToString("F2") + " BPM", x + width / 2, rateY, Color._textColor, false, true);
 
             int diffY = rateY + 70;
 
-            if (_isSelectingDifficulty)
+            // Always draw the standard difficulty display
+            // Draw difficulty info if available
+            if (selectedSet.Beatmaps.Count > 0 && _selectedDifficultyIndex >= 0 && 
+                _selectedDifficultyIndex < selectedSet.Beatmaps.Count)
             {
-                int diffStartY = diffY + 40;
-                int diffItemHeight = 40;
-                int visibleItems = 5;
-                int totalItems = selectedSet.Beatmaps.Count;
-
-                int startIndex = Math.Max(0, Math.Min(_selectedDifficultyIndex - (visibleItems / 2), totalItems - visibleItems));
-                startIndex = Math.Max(0, startIndex);
-
-                for (int i = 0; i < Math.Min(visibleItems, totalItems); i++)
+                var selectedDiff = selectedSet.Beatmaps[_selectedDifficultyIndex];
+                
+                // Get cached difficulty rating
+                double difficultyRating = 0;
+                if (selectedDiff.CachedDifficultyRating.HasValue)
                 {
-                    int idx = startIndex + i;
-                    if (idx >= 0 && idx < totalItems)
-                    {
-                        bool isSelected = idx == _selectedDifficultyIndex;
-                        string diffName = selectedSet.Beatmaps[idx].Difficulty;
-
-                        // Get difficulty info
-                        double difficultyRating = 0;
-                        if (selectedSet.Beatmaps[idx].CachedDifficultyRating.HasValue)
-                        {
-                            difficultyRating = selectedSet.Beatmaps[idx].CachedDifficultyRating.Value;
-                        }
-                        else
-                        {
-                            difficultyRating = _difficultyRatingService.CalculateDifficulty(selectedSet.Beatmaps[idx]);
-                            selectedSet.Beatmaps[idx].CachedDifficultyRating = difficultyRating;
-                        }
-
-                        string diffText = $"{diffName} ({difficultyRating:F2}😀😀)";
-
-                        SDL_Color itemColor = isSelected ? Color._highlightColor : Color._textColor;
-                        RenderText(
-                            diffText,
-                            x + width / 2, diffStartY + (i * diffItemHeight),
-                            itemColor, false, true
-                        );
-                    }
+                    difficultyRating = selectedDiff.CachedDifficultyRating.Value;
                 }
-
-                // Draw Enter to play instruction
-                RenderText(
-                    "ENTER to play, ESC to cancel",
-                    x + width / 2, diffStartY + (visibleItems * diffItemHeight) + 20,
-                    Color._mutedTextColor, false, true
-                );
-            }
-
-            // If we have a cached hash for this song, show the score section
-            if (!string.IsNullOrEmpty(_cachedScoreMapHash))
-            {
-                int scoresY = height;
-                int scoresTextY = scoresY + 20;
-
-                if (_cachedScores.Count > 0)
+                
+                // Draw difficulty information
+                string diffText = $"{selectedDiff.Difficulty}";
+                if (difficultyRating > 0)
                 {
-                    RenderText(
-                        $"{_cachedScores.Count} recorded scores",
-                        x + width / 2, scoresY,
-                        Color._textColor, false, true
-                    );
-
-                    RenderText(
-                        "Tab to view scores",
-                        x + width / 2, scoresTextY,
-                        Color._mutedTextColor, false, true
-                    );
+                    diffText += $" ({difficultyRating:F2}★)";
                 }
+                
+                RenderText(diffText, x + width / 2, diffY, Color._textColor, false, true);
             }
         }
 
@@ -2249,38 +2354,54 @@ namespace C4TX.SDL.Engine
         {
             DrawPanel(x, y, width, height, Color._panelBgColor, Color._accentColor);
 
-            const int lineHeight = 30;
-            const int startY = 30;
-            const int startX = 20;
+            const int lineHeight = 25;
+            const int padding = 20;
+            int columnWidth = width / 2 - padding * 2;
 
-            int currentY = y + startY;
+            // Left column
+            int leftX = x + padding;
+            int rightX = x + width / 2 + padding;
+            int currentY = y + padding;
 
-            RenderText("Controls:", x + width / 2, currentY, Color._textColor, false, true);
-            currentY += lineHeight + 5;
-
-            RenderText("D F J K - Game Keys", x + startX, currentY, Color._mutedTextColor, false, false);
+            RenderText("Controls:", leftX, currentY, Color._textColor, false, false);
             currentY += lineHeight;
 
-            RenderText("ESC - Return to Menu", x + startX, currentY, Color._mutedTextColor, false, false);
+            RenderText("D F J K - Game Keys", leftX, currentY, Color._mutedTextColor, false, false);
             currentY += lineHeight;
 
-            RenderText("P - Pause/Resume", x + startX, currentY, Color._mutedTextColor, false, false);
+            RenderText("ESC - Return to Menu", leftX, currentY, Color._mutedTextColor, false, false);
             currentY += lineHeight;
 
-            RenderText("F11 - Toggle Fullscreen", x + startX, currentY, Color._mutedTextColor, false, false);
+            RenderText("P - Pause/Resume", leftX, currentY, Color._mutedTextColor, false, false);
             currentY += lineHeight;
 
-            RenderText("1/2 - Decrease/Increase Rate", x + startX, currentY, Color._mutedTextColor, false, false);
+            RenderText("F11 - Toggle Fullscreen", leftX, currentY, Color._mutedTextColor, false, false);
             currentY += lineHeight;
 
-            RenderText("U - Change Username", x + startX, currentY, Color._mutedTextColor, false, false);
+            RenderText("1/2 - Decrease/Increase Rate", leftX, currentY, Color._mutedTextColor, false, false);
             currentY += lineHeight;
 
-            RenderText("S - Settings", x + startX, currentY, Color._mutedTextColor, false, false);
+            RenderText("P - Switch Profile", leftX, currentY, Color._mutedTextColor, false, false);
             currentY += lineHeight;
-
-            RenderText("+/- - Adjust Volume", x + startX, currentY, Color._mutedTextColor, false, false);
+            
+            RenderText("S - Settings", leftX, currentY, Color._mutedTextColor, false, false);
+            
+            // Right column - song navigation controls
+            currentY = y + padding;
+            
+            RenderText("Song Navigation:", rightX, currentY, Color._textColor, false, false);
             currentY += lineHeight;
+            
+            RenderText("Up/Down - Select Song", rightX, currentY, Color._mutedTextColor, false, false);
+            currentY += lineHeight;
+            
+            RenderText("Left/Right - Select Difficulty", rightX, currentY, Color._mutedTextColor, false, false);
+            currentY += lineHeight;
+            
+            RenderText("Enter - Start Game", rightX, currentY, Color._mutedTextColor, false, false);
+            currentY += lineHeight;
+            
+            RenderText("Tab - View Song Scores", rightX, currentY, Color._mutedTextColor, false, false);
         }
 
         // Method to render previous scores for a beatmap
@@ -2744,5 +2865,191 @@ namespace C4TX.SDL.Engine
             SDL_RenderPresent(_renderer);
         }
 
+        // Render profile selection screen
+        public static void RenderProfileSelection()
+        {
+            // Draw background
+            DrawMenuBackground();
+            
+            // Draw header
+            SDL_Color titleColor = new SDL_Color() { r = 255, g = 255, b = 255, a = 255 };
+            RenderText("Profile Selection", _windowWidth / 2, 50, titleColor, true, true);
+            
+            int panelWidth = (int)(_windowWidth * 0.6f);
+            int panelHeight = (int)(_windowHeight * 0.7f);
+            int panelX = (_windowWidth - panelWidth) / 2;
+            int panelY = (int)(_windowHeight * 0.15f);
+            
+            // Draw main panel
+            SDL_Color panelColor = new SDL_Color() { r = 30, g = 30, b = 60, a = 230 };
+            SDL_Color borderColor = new SDL_Color() { r = 100, g = 100, b = 255, a = 255 };
+            DrawPanel(panelX, panelY, panelWidth, panelHeight, panelColor, borderColor);
+            
+            // If creating a new profile
+            if (_isCreatingProfile)
+            {
+                RenderProfileCreation(panelX, panelY, panelWidth, panelHeight);
+                return;
+            }
+            
+            // If confirming deletion
+            if (_isDeletingProfile)
+            {
+                RenderProfileDeletion(panelX, panelY, panelWidth, panelHeight);
+                return;
+            }
+            
+            // Check if we have any profiles
+            if (_availableProfiles.Count == 0)
+            {
+                // No profiles found, prompt to create one
+                SDL_Color textColor = new SDL_Color() { r = 200, g = 200, b = 200, a = 255 };
+                RenderText("No profiles found", panelX + panelWidth / 2, panelY + 100, textColor, false, true);
+                RenderText("Press N to create a new profile", panelX + panelWidth / 2, panelY + 150, textColor, false, true);
+                return;
+            }
+            
+            // Draw profile list
+            const int profileItemHeight = 60;
+            const int visibleProfiles = 7; // Maximum number of profiles visible at once
+            
+            int startIndex = Math.Max(0, _selectedProfileIndex - (visibleProfiles / 2));
+            startIndex = Math.Min(startIndex, Math.Max(0, _availableProfiles.Count - visibleProfiles));
+            
+            int profileY = panelY + 50;
+            
+            // Draw a small header
+            SDL_Color headerColor = new SDL_Color() { r = 150, g = 150, b = 200, a = 255 };
+            RenderText("Username", panelX + 30, profileY, headerColor, false, false);
+            RenderText("Created", panelX + 250, profileY, headerColor, false, false);
+            RenderText("Last Played", panelX + 400, profileY, headerColor, false, false);
+            profileY += 30;
+            
+            for (int i = startIndex; i < Math.Min(_availableProfiles.Count, startIndex + visibleProfiles); i++)
+            {
+                var profile = _availableProfiles[i];
+                
+                // Determine profile item color
+                SDL_Color itemColor = (i == _selectedProfileIndex) 
+                    ? new SDL_Color() { r = 60, g = 60, b = 120, a = 255 } 
+                    : new SDL_Color() { r = 40, g = 40, b = 80, a = 255 };
+                
+                // Draw profile item background
+                SDL_Rect itemRect = new SDL_Rect()
+                {
+                    x = panelX + 10,
+                    y = profileY,
+                    w = panelWidth - 20,
+                    h = profileItemHeight
+                };
+                
+                SDL_SetRenderDrawColor(_renderer, itemColor.r, itemColor.g, itemColor.b, itemColor.a);
+                SDL_RenderFillRect(_renderer, ref itemRect);
+                
+                // Draw border for selected item
+                if (i == _selectedProfileIndex)
+                {
+                    SDL_SetRenderDrawColor(_renderer, 150, 150, 255, 255);
+                    SDL_RenderDrawRect(_renderer, ref itemRect);
+                }
+                
+                // Draw profile details
+                SDL_Color textColor = (i == _selectedProfileIndex) 
+                    ? new SDL_Color() { r = 255, g = 255, b = 255, a = 255 } 
+                    : new SDL_Color() { r = 200, g = 200, b = 200, a = 255 };
+                
+                // Username
+                RenderText(profile.Username, panelX + 30, profileY + profileItemHeight / 2, textColor, false, false);
+                
+                // Created date
+                string createdDate = profile.CreatedDate.ToString("yyyy-MM-dd");
+                RenderText(createdDate, panelX + 250, profileY + profileItemHeight / 2, textColor, false, false);
+                
+                // Last played date
+                string lastPlayedDate = profile.LastPlayedDate.ToString("yyyy-MM-dd");
+                RenderText(lastPlayedDate, panelX + 400, profileY + profileItemHeight / 2, textColor, false, false);
+                
+                profileY += profileItemHeight + 5;
+            }
+            
+            // Draw instructions at the bottom
+            SDL_Color instructionColor = new SDL_Color() { r = 180, g = 180, b = 180, a = 255 };
+            int instructionY = panelY + panelHeight - 80;
+            RenderText("Up/Down: Select Profile", panelX + panelWidth / 2, instructionY, instructionColor, false, true);
+            RenderText("Enter: Choose Profile", panelX + panelWidth / 2, instructionY + 25, instructionColor, false, true);
+            RenderText("N: Create New Profile", panelX + panelWidth / 2, instructionY + 50, instructionColor, false, true);
+            
+            if (_availableProfiles.Count > 0)
+            {
+                RenderText("Delete: Remove Profile", panelX + panelWidth / 2, instructionY + 75, instructionColor, false, true);
+            }
+        }
+        
+        // Render profile creation screen
+        private static void RenderProfileCreation(int panelX, int panelY, int panelWidth, int panelHeight)
+        {
+            SDL_Color textColor = new SDL_Color() { r = 200, g = 200, b = 200, a = 255 };
+            
+            // Draw title
+            RenderText("Create New Profile", panelX + panelWidth / 2, panelY + 60, textColor, true, true);
+            
+            // Draw username input field
+            int inputFieldY = panelY + 150;
+            SDL_Color inputBgColor = new SDL_Color() { r = 20, g = 20, b = 40, a = 255 };
+            SDL_Color inputBorderColor = _isProfileNameInvalid 
+                ? new SDL_Color() { r = 255, g = 100, b = 100, a = 255 }
+                : new SDL_Color() { r = 100, g = 100, b = 255, a = 255 };
+            
+            // Draw input field
+            DrawPanel(panelX + 100, inputFieldY, panelWidth - 200, 50, inputBgColor, inputBorderColor);
+            
+            // Draw cursor
+            string usernameWithCursor = _username + "_";
+            RenderText(usernameWithCursor, panelX + panelWidth / 2, inputFieldY + 25, textColor, false, true);
+            
+            // Draw error message if name is invalid
+            if (_isProfileNameInvalid)
+            {
+                SDL_Color errorColor = new SDL_Color() { r = 255, g = 100, b = 100, a = 255 };
+                RenderText(_profileNameError, panelX + panelWidth / 2, inputFieldY + 80, errorColor, false, true);
+            }
+            
+            // Draw instructions
+            int instructionY = panelY + panelHeight - 80;
+            SDL_Color instructionColor = new SDL_Color() { r = 180, g = 180, b = 180, a = 255 };
+            RenderText("Type a username (A-Z, 0-9, space, -)", panelX + panelWidth / 2, instructionY, instructionColor, false, true);
+            RenderText("Enter: Create Profile", panelX + panelWidth / 2, instructionY + 30, instructionColor, false, true);
+            RenderText("Escape: Cancel", panelX + panelWidth / 2, instructionY + 60, instructionColor, false, true);
+        }
+        
+        // Render profile deletion confirmation screen
+        private static void RenderProfileDeletion(int panelX, int panelY, int panelWidth, int panelHeight)
+        {
+            if (_availableProfiles.Count == 0 || _selectedProfileIndex < 0 || _selectedProfileIndex >= _availableProfiles.Count)
+            {
+                _isDeletingProfile = false;
+                return;
+            }
+            
+            Profile profileToDelete = _availableProfiles[_selectedProfileIndex];
+            
+            SDL_Color textColor = new SDL_Color() { r = 255, g = 200, b = 200, a = 255 };
+            
+            // Draw confirmation message
+            RenderText("Delete Profile?", panelX + panelWidth / 2, panelY + 100, textColor, true, true);
+            
+            SDL_Color profileNameColor = new SDL_Color() { r = 255, g = 255, b = 255, a = 255 };
+            RenderText(profileToDelete.Username, panelX + panelWidth / 2, panelY + 150, profileNameColor, true, true);
+            
+            // Warning text
+            SDL_Color warningColor = new SDL_Color() { r = 255, g = 100, b = 100, a = 255 };
+            RenderText("This will remove all scores and settings for this profile.", panelX + panelWidth / 2, panelY + 200, warningColor, false, true);
+            
+            // Draw instruction
+            int instructionY = panelY + panelHeight - 100;
+            SDL_Color instructionColor = new SDL_Color() { r = 200, g = 200, b = 200, a = 255 };
+            RenderText("Press Y to confirm deletion", panelX + panelWidth / 2, instructionY, instructionColor, false, true);
+            RenderText("Press N or Escape to cancel", panelX + panelWidth / 2, instructionY + 30, instructionColor, false, true);
+        }
     }
 }

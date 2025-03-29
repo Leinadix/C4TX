@@ -85,10 +85,11 @@ namespace C4TX.SDL.Engine
                     });
                 }
 
-
-
                 // Save the score using the score service
                 _scoreService.SaveScore(scoreData);
+                
+                // Update profile stats
+                _profileService.UpdateProfileStats(_username, _score, _currentAccuracy);
 
                 Console.WriteLine($"Score saved for {_username} on {_currentBeatmap?.Title ?? "Unknown Map"} (Hash: {mapHash})");
                 Console.WriteLine($"Saved {scoreData.NoteHits.Count} note hit timestamps for replay reconstruction");

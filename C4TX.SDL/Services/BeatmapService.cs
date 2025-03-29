@@ -134,6 +134,8 @@ namespace C4TX.SDL.Services
                 using (var reader = new StreamReader(filePath))
                 {
                     string? line;
+                    bool inEvents = false;
+                    
                     while ((line = reader.ReadLine()) != null)
                     {
                         if (line.StartsWith("Title:"))
@@ -146,8 +148,36 @@ namespace C4TX.SDL.Services
                             beatmap.Version = line.Substring(8).Trim();
                         else if (line.StartsWith("AudioFilename:"))
                             beatmap.AudioFilename = line.Substring(15).Trim();
-                        else if (line == "[HitObjects]")
+                        else if (line == "[Events]")
                         {
+                            inEvents = true;
+                            continue;
+                        }
+                        else if (inEvents && line.StartsWith("0,0,\""))
+                        {
+                            // Background image line format: 0,0,"filename.jpg",0,0
+                            try
+                            {
+                                string[] parts = line.Split(',');
+                                if (parts.Length >= 3 && parts[0] == "0" && parts[1] == "0")
+                                {
+                                    // Extract filename between quotes
+                                    string filename = parts[2];
+                                    if (filename.StartsWith("\"") && filename.EndsWith("\""))
+                                    {
+                                        filename = filename.Substring(1, filename.Length - 2);
+                                        beatmap.BackgroundFilename = filename;
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Error parsing background image: {ex.Message}");
+                            }
+                        }
+                        else if (line == "[HitObjects]" || line == "[TimingPoints]")
+                        {
+                            inEvents = false;
                             break;
                         }
                     }
@@ -321,6 +351,7 @@ namespace C4TX.SDL.Services
                 Creator = originalBeatmap.Creator,
                 Version = originalBeatmap.Version,
                 AudioFilename = originalBeatmap.AudioFilename,
+                BackgroundFilename = originalBeatmap.BackgroundFilename,
                 KeyCount = 4,
                 Length = originalBeatmap.Length
             };

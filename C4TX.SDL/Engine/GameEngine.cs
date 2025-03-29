@@ -72,6 +72,7 @@ namespace C4TX.SDL.Engine
         // Game state enum
         public enum GameState
         {
+            ProfileSelect,
             Menu,
             Playing,
             Paused,
@@ -79,7 +80,7 @@ namespace C4TX.SDL.Engine
             Settings
         }
 
-        public static GameState _currentState = GameState.Menu;
+        public static GameState _currentState = GameState.ProfileSelect;
         public static int _selectedSongIndex = 0;
         public static int _selectedDifficultyIndex = 0;
         public static bool _isSelectingDifficulty = false;
@@ -109,6 +110,15 @@ namespace C4TX.SDL.Engine
         public static string _username = "";
         public static bool _isEditingUsername = false;
         public const int MAX_USERNAME_LENGTH = 20;
+        
+        // Profile handling
+        public static ProfileService _profileService = new ProfileService();
+        public static List<Profile> _availableProfiles = new List<Profile>();
+        public static int _selectedProfileIndex = 0;
+        public static bool _isCreatingProfile = false;
+        public static bool _isProfileNameInvalid = false;
+        public static string _profileNameError = "";
+        public static bool _isDeletingProfile = false;
 
         // For results screen
         public static List<(double NoteTime, double HitTime, double Deviation)> _noteHits = new List<(double, double, double)>();
@@ -159,6 +169,18 @@ namespace C4TX.SDL.Engine
             {
                 Console.WriteLine($"SDL could not initialize! SDL_Error: {SDL_GetError()}");
                 return false;
+            }
+            
+            // Initialize SDL_image for loading PNG, JPG, and other image formats
+            try
+            {
+                int imgInitResult = SDL2.SDL_image.IMG_Init(0);
+                Console.WriteLine($"SDL_image initialized with result: {imgInitResult}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"SDL_image initialization warning: {ex.Message}");
+                // Continue even if IMG initialization fails
             }
 
             // Load settings
@@ -474,6 +496,10 @@ namespace C4TX.SDL.Engine
             {
                 SettingsKeyhandler.HandleSettingsKeys(scancode);
             }
+            else if (_currentState == GameState.ProfileSelect)
+            {
+                ProfileKeyhandler.HandleProfileKeys(scancode);
+            }
         }
 
         public static void HandleKeyUp(SDL_Scancode scancode)
@@ -788,6 +814,16 @@ namespace C4TX.SDL.Engine
                 }
             }
             RenderEngine._textTextures.Clear();
+            
+            // Clean up background textures
+            foreach (var texture in RenderEngine._backgroundTextures.Values)
+            {
+                if (texture != IntPtr.Zero)
+                {
+                    SDL_DestroyTexture(texture);
+                }
+            }
+            RenderEngine._backgroundTextures.Clear();
 
             // Clean up fonts
             if (RenderEngine._font != IntPtr.Zero)

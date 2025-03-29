@@ -11,6 +11,7 @@ namespace C4TX.SDL.Models
         public string Creator { get; set; } = string.Empty;
         public string Version { get; set; } = string.Empty;
         public string AudioFilename { get; set; } = string.Empty;
+        public string BackgroundFilename { get; set; } = string.Empty;
         public List<HitObject> HitObjects { get; set; } = new List<HitObject>();
         public int KeyCount { get; set; }
         public double Length { get; set; } // in milliseconds
