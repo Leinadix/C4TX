@@ -2657,5 +2657,92 @@ namespace C4TX.SDL.Engine
             return timing;
         }
 
+        public static void RenderLoadingAnimation(string loadingText, int progress = -1, int total = -1)
+        {
+            // Clear screen with background color
+            SDL_SetRenderDrawColor(_renderer, Color._bgColor.r, Color._bgColor.g, Color._bgColor.b, Color._bgColor.a);
+            SDL_RenderClear(_renderer);
+
+            // Draw a title
+            SDL_Color titleColor = new SDL_Color() { r = 255, g = 255, b = 255, a = 255 };
+            RenderText("C4TX SDL - 4K Rhythm Game", _windowWidth / 2, _windowHeight / 4, titleColor, true, true);
+
+            // Draw loading text
+            SDL_Color textColor = new SDL_Color() { r = 200, g = 200, b = 200, a = 255 };
+            RenderText(loadingText, _windowWidth / 2, _windowHeight / 2 - 30, textColor, false, true);
+
+            // Calculate animated dots based on time
+            int numDots = (int)(SDL_GetTicks() / 500) % 4; // 0-3 dots, changing every 500ms
+            string dots = new string('.', numDots);
+            RenderText("Loading" + dots, _windowWidth / 2, _windowHeight / 2, textColor, false, true);
+
+            // Draw progress bar if progress is provided
+            if (progress >= 0 && total > 0)
+            {
+                int barWidth = _windowWidth / 2;
+                int barHeight = 20;
+                int barX = (_windowWidth - barWidth) / 2;
+                int barY = _windowHeight / 2 + 40;
+
+                // Draw background
+                SDL_Rect bgRect = new SDL_Rect()
+                {
+                    x = barX,
+                    y = barY,
+                    w = barWidth,
+                    h = barHeight
+                };
+                SDL_SetRenderDrawColor(_renderer, 50, 50, 50, 255);
+                SDL_RenderFillRect(_renderer, ref bgRect);
+
+                // Draw progress
+                float progressPercentage = (float)progress / total;
+                SDL_Rect progressRect = new SDL_Rect()
+                {
+                    x = barX,
+                    y = barY,
+                    w = (int)(barWidth * progressPercentage),
+                    h = barHeight
+                };
+                SDL_SetRenderDrawColor(_renderer, 0, 200, 255, 255);
+                SDL_RenderFillRect(_renderer, ref progressRect);
+
+                // Draw progress text
+                string progressText = $"{progress}/{total} ({(int)(progressPercentage * 100)}%)";
+                RenderText(progressText, _windowWidth / 2, barY + barHeight + 20, textColor, false, true);
+            }
+            
+            // If no progress bar, draw a spinning animation
+            else
+            {
+                // Draw a spinning animation
+                int radius = 20;
+                int centerX = _windowWidth / 2;
+                int centerY = _windowHeight / 2 + 60;
+                
+                // Calculate position based on time
+                double angle = (SDL_GetTicks() / 10.0) % 360;
+                double radians = angle * Math.PI / 180.0;
+                
+                // Draw multiple segments with different colors for a nice spinning effect
+                for (int i = 0; i < 8; i++)
+                {
+                    double segmentAngle = radians + (i * Math.PI / 4.0);
+                    int x1 = centerX + (int)(radius * 0.5 * Math.Cos(segmentAngle));
+                    int y1 = centerY + (int)(radius * 0.5 * Math.Sin(segmentAngle));
+                    int x2 = centerX + (int)(radius * Math.Cos(segmentAngle));
+                    int y2 = centerY + (int)(radius * Math.Sin(segmentAngle));
+                    
+                    // Fade color based on position in the cycle
+                    byte alpha = (byte)(255 - ((i * 30) % 255));
+                    SDL_SetRenderDrawColor(_renderer, 0, 200, 255, alpha);
+                    SDL_RenderDrawLine(_renderer, x1, y1, x2, y2);
+                }
+            }
+            
+            // Present the renderer
+            SDL_RenderPresent(_renderer);
+        }
+
     }
 }

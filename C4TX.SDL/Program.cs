@@ -23,8 +23,17 @@ namespace C4TX.SDL
                     return;
                 }
                 
+                // Show initial loading screen
+                RenderEngine.RenderLoadingAnimation("Initializing...");
+                
                 Console.WriteLine("Scanning for beatmaps...");
+                
+                // Show loading animation while scanning for beatmaps
+                RenderEngine.RenderLoadingAnimation("Scanning for beatmaps...");
+                
+                // Scan for beatmaps (this will show loading animation during processing)
                 BeatmapEngine.ScanForBeatmaps();
+                RenderEngine.ToggleFullscreen();
                 
                 // Remove the automatic game start
                 // The game will now start in menu mode

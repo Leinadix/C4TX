@@ -206,7 +206,15 @@ namespace C4TX.SDL.Engine
                 // Ensure we're in menu state regardless of whether maps were found
                 _currentState = GameState.Menu;
 
+                // Count total number of beatmaps for progress tracking
+                int totalBeatmaps = 0;
+                foreach (var set in _availableBeatmapSets)
+                {
+                    totalBeatmaps += set.Beatmaps.Count;
+                }
+                
                 // Precalculate difficulty ratings for all beatmaps
+                int processedBeatmaps = 0;
                 for (int i = 0; i < _availableBeatmapSets.Count; i++)
                 {
                     var set = _availableBeatmapSets[i];
@@ -215,13 +223,22 @@ namespace C4TX.SDL.Engine
                         var info = set.Beatmaps[j];
                         if (!info.CachedDifficultyRating.HasValue)
                         {
+                            // Show loading animation with current beatmap info
+                            string loadingText = $"Calculating difficulty for {set.Title} - {info.Difficulty}";
+                            RenderEngine.RenderLoadingAnimation(loadingText, processedBeatmaps, totalBeatmaps);
+                            
                             LoadBeatmap(info.Path, true);
                             info.CachedDifficultyRating = (new DifficultyRatingService()).CalculateDifficulty(_currentBeatmap!, 1.0);
                             SDL_Delay(1); // Ensure we don't hog the CPU
                         }
+                        processedBeatmaps++;
                     }
                 }
 
+                // Show a final "Completed" loading screen
+                RenderEngine.RenderLoadingAnimation("All beatmaps processed, loading game...", totalBeatmaps, totalBeatmaps);
+                
+                // Load the first beatmap again to ensure it's ready for the menu
                 LoadBeatmap(_availableBeatmapSets[0].Beatmaps[0].Path);
 
             }
