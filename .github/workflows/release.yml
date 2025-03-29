@@ -44,6 +44,22 @@ jobs:
         Invoke-WebRequest -Uri https://www.libsdl.org/release/SDL2-2.0.20-win32-x64.zip -OutFile temp/sdl2.zip
         Expand-Archive -Path temp/sdl2.zip -DestinationPath temp/sdl2
         Copy-Item -Path temp/sdl2/SDL2.dll -Destination publish/win-x64/
+        
+        # SDL2_ttf
+        Invoke-WebRequest -Uri https://www.libsdl.org/projects/SDL_ttf/release/SDL2_ttf-2.0.18-win32-x64.zip -OutFile temp/sdl2_ttf.zip
+        Expand-Archive -Path temp/sdl2_ttf.zip -DestinationPath temp/sdl2_ttf
+        Copy-Item -Path temp/sdl2_ttf/SDL2_ttf.dll -Destination publish/win-x64/
+        
+        # SDL2_image
+        Invoke-WebRequest -Uri https://www.libsdl.org/projects/SDL_image/release/SDL2_image-2.0.5-win32-x64.zip -OutFile temp/sdl2_image.zip
+        Expand-Archive -Path temp/sdl2_image.zip -DestinationPath temp/sdl2_image
+        Copy-Item -Path temp/sdl2_image/SDL2_image.dll -Destination publish/win-x64/
+        # SDL2_image dependencies
+        Copy-Item -Path temp/sdl2_image/libjpeg-9.dll -Destination publish/win-x64/
+        Copy-Item -Path temp/sdl2_image/libpng16-16.dll -Destination publish/win-x64/
+        Copy-Item -Path temp/sdl2_image/libtiff-5.dll -Destination publish/win-x64/
+        Copy-Item -Path temp/sdl2_image/libwebp-7.dll -Destination publish/win-x64/
+        Copy-Item -Path temp/sdl2_image/zlib1.dll -Destination publish/win-x64/
     
     - name: Download and extract BASS native DLLs
       shell: pwsh
