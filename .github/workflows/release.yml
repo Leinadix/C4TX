@@ -54,7 +54,7 @@ jobs:
         Invoke-WebRequest -Uri https://www.un4seen.com/files/bassmix24.zip -OutFile temp/bassmix.zip
         Expand-Archive -Path temp/bassmix.zip -DestinationPath temp/bassmix
         Copy-Item -Path temp/bassmix/x64/bassmix.dll -Destination publish/win-x64/
-        Invoke-WebRequest -Uri https://www.un4seen.com/files/bassfx24.zip -OutFile temp/bassfx.zip
+        Invoke-WebRequest -Uri https://www.un4seen.com/files/z/0/bass_fx24.zip -OutFile temp/bassfx.zip
         Expand-Archive -Path temp/bassfx.zip -DestinationPath temp/bassfx
         Copy-Item -Path temp/bassfx/x64/bass_fx.dll -Destination publish/win-x64/
     
