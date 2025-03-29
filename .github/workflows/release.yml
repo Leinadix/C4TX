@@ -1,0 +1,61 @@
+name: Create Release
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - '.gitignore'
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: 6.0.x
+    
+    - name: Restore dependencies
+      run: dotnet restore
+    
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+    
+    - name: Publish
+      run: dotnet publish C4TX.SDL/C4TX.SDL.csproj --configuration Release -o publish/win-x64 --self-contained true -r win-x64 /p:PublishSingleFile=true
+    
+    - name: Generate version
+      id: version
+      shell: pwsh
+      run: |
+        $commitCount = (git rev-list --count HEAD)
+        $shortSha = (git rev-parse --short HEAD)
+        $version = "1.$commitCount"
+        echo "VERSION=$version" >> $env:GITHUB_ENV
+        echo "RELEASE_TAG=v$version" >> $env:GITHUB_ENV
+    
+    - name: Create ZIP file
+      shell: pwsh
+      run: |
+        Compress-Archive -Path publish/win-x64/* -DestinationPath C4TX-${{ env.VERSION }}-win-x64.zip
+    
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ env.RELEASE_TAG }}
+        name: Release ${{ env.VERSION }}
+        draft: false
+        prerelease: false
+        files: |
+          C4TX-${{ env.VERSION }}-win-x64.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
