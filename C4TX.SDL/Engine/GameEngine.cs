@@ -45,6 +45,7 @@ namespace C4TX.SDL.Engine
             SDL_Scancode.SDL_SCANCODE_O,
             SDL_Scancode.SDL_SCANCODE_P
         };
+        public static bool _showSeperatorLines = true;
 
         // UI Animation properties
         public static double _menuAnimationTime = 0;
@@ -885,6 +886,7 @@ namespace C4TX.SDL.Engine
                 _noteShape = (NoteShape)(int)settings.NoteShape;
                 _selectedSkin = settings.SelectedSkin;
                 _accuracyModel = settings.AccuracyModel;
+                _showSeperatorLines = settings.ShowLaneSeparators;
 
                 // Update accuracy service with current model and hit window
                 _accuracyService.SetModel(_accuracyModel);
@@ -916,7 +918,8 @@ namespace C4TX.SDL.Engine
                     ComboPositionPercentage = _comboPositionPercentage,
                     NoteShape = (Models.NoteShape)(int)_noteShape,
                     SelectedSkin = _selectedSkin,
-                    AccuracyModel = _accuracyModel
+                    AccuracyModel = _accuracyModel,
+                    ShowLaneSeparators = _showSeperatorLines
                 };
 
                 _settingsService.SaveSettings(settings, username);

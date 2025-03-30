@@ -4,6 +4,7 @@ using SDL2;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using static C4TX.SDL.Engine.GameEngine;
@@ -147,9 +148,9 @@ namespace C4TX.SDL.Engine
         }
 
         // Method to create and cache text textures
-        public static IntPtr GetTextTexture(string text, SDL_Color color, bool isLarge = false)
+        public static IntPtr GetTextTexture(string text, SDL_Color color, bool isLarge = false, bool blackbar = false)
         {
-            string key = $"{text}_{color.r}_{color.g}_{color.b}_{(isLarge ? "L" : "S")}";
+            string key = $"{text}_{color.r}_{color.g}_{color.b}_{(isLarge ? "L" : "S")}_{(blackbar ? "B" : "N")}";
 
             // Return cached texture if it exists
             if (_textTextures.ContainsKey(key))
@@ -157,23 +158,69 @@ namespace C4TX.SDL.Engine
                 return _textTextures[key];
             }
 
-            // Create new texture
+            // Select font size
             IntPtr fontToUse = isLarge ? _largeFont : _font;
             if (fontToUse == IntPtr.Zero)
             {
-                // No font available
                 return IntPtr.Zero;
             }
 
-            //IntPtr surface = SDL_ttf.TTF_RenderText_Blended(fontToUse, text, color);
-            IntPtr surface = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, color);
-            if (surface == IntPtr.Zero)
+            IntPtr finalSurface;
+
+            if (blackbar)
+            {
+                SDL_Color black = new SDL_Color { r = 0, g = 0, b = 0, a = 255 };
+
+                // Render border (offset in multiple directions)
+                IntPtr surfaceBlack1 = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, black);
+                IntPtr surfaceBlack2 = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, black);
+                IntPtr surfaceBlack3 = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, black);
+                IntPtr surfaceBlack4 = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, black);
+                IntPtr surfaceMain = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, color);
+
+                if (surfaceBlack1 == IntPtr.Zero || surfaceMain == IntPtr.Zero)
+                {
+                    return IntPtr.Zero;
+                }
+
+                // Create a larger surface to hold the border + main text
+                SDL_Surface textSurface = Marshal.PtrToStructure<SDL_Surface>(surfaceMain);
+                finalSurface = SDL_CreateRGBSurface(0, textSurface.w + 2, textSurface.h + 2, 32, 0, 0, 0, 0);
+
+                // Blit black border in different directions
+                SDL_Rect offset = new();
+                offset.x = 1;
+                offset.y = 0; SDL_BlitSurface(surfaceBlack1, IntPtr.Zero, finalSurface, ref offset);
+                offset.x = -1;
+                offset.y = 0; SDL_BlitSurface(surfaceBlack2, IntPtr.Zero, finalSurface, ref offset);
+                offset.x = 0;
+                offset.y = 1; SDL_BlitSurface(surfaceBlack3, IntPtr.Zero, finalSurface, ref offset);
+                offset.x = 0;
+                offset.y = -1; SDL_BlitSurface(surfaceBlack4, IntPtr.Zero, finalSurface, ref offset);
+
+                // Blit main text in the center
+                offset.x = 1; offset.y = 1;
+                SDL_BlitSurface(surfaceMain, IntPtr.Zero, finalSurface, ref offset);
+
+                // Free temporary surfaces
+                SDL_FreeSurface(surfaceBlack1);
+                SDL_FreeSurface(surfaceBlack2);
+                SDL_FreeSurface(surfaceBlack3);
+                SDL_FreeSurface(surfaceBlack4);
+                SDL_FreeSurface(surfaceMain);
+            }
+            else
+            {
+                finalSurface = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, color);
+            }
+
+            if (finalSurface == IntPtr.Zero)
             {
                 return IntPtr.Zero;
             }
 
-            IntPtr texture = SDL_CreateTextureFromSurface(_renderer, surface);
-            SDL_FreeSurface(surface);
+            IntPtr texture = SDL_CreateTextureFromSurface(_renderer, finalSurface);
+            SDL_FreeSurface(finalSurface);
 
             // Cache the texture
             _textTextures[key] = texture;
@@ -181,10 +228,11 @@ namespace C4TX.SDL.Engine
             return texture;
         }
 
+
         // Helper method to render text
-        public static void RenderText(string text, int x, int y, SDL_Color color, bool isLarge = false, bool centered = false)
+        public static void RenderText(string text, int x, int y, SDL_Color color, bool isLarge = false, bool centered = false, bool blackbar = false)
         {
-            IntPtr textTexture = GetTextTexture(text, color, isLarge);
+            IntPtr textTexture = GetTextTexture(text, color, isLarge, blackbar);
             if (textTexture == IntPtr.Zero)
             {
                 return;
@@ -290,9 +338,6 @@ namespace C4TX.SDL.Engine
             // Draw background
             DrawMenuBackground();
             
-            // Draw the profile info panel in top right corner
-            DrawMainMenuPanel();
-            
             // Draw song selection panel
             int songPanelWidth = _windowWidth * 3 / 4;
             int songPanelHeight = _windowHeight - 200;
@@ -309,7 +354,7 @@ namespace C4TX.SDL.Engine
                 int contentHeight = songPanelHeight - 60;
                 
                 // Draw song selection with new layout
-                DrawSongSelectionNewLayout(songPanelX + PANEL_PADDING, contentY,
+                DrawSongSelectionIntern(songPanelX + PANEL_PADDING, contentY,
                     songPanelWidth - (2 * PANEL_PADDING), contentHeight);
             }
             else
@@ -321,23 +366,31 @@ namespace C4TX.SDL.Engine
             
             // Draw instruction panel at the bottom
             DrawInstructionPanel(songPanelX, songPanelY + songPanelHeight + 10, songPanelWidth, 50);
+
+            // Draw the profile info panel in top right corner
+            DrawProfilePanel();
         }
 
         public static void RenderGameplay()
         {
-            // Draw lane dividers
-            SDL_SetRenderDrawColor(_renderer, 100, 100, 100, 255);
-            for (int i = 0; i <= 4; i++)
+            if (_showSeperatorLines)
             {
-                int x = _lanePositions[0] - (_laneWidth / 2) + (i * _laneWidth);
-                SDL_RenderDrawLine(_renderer, x, 0, x, _windowHeight);
+                // Draw lane dividers
+                SDL_SetRenderDrawColor(_renderer, 100, 100, 100, 255);
+                for (int i = 0; i <= 4; i++)
+                {
+                    int x = _lanePositions[0] - (_laneWidth / 2) + (i * _laneWidth);
+                    SDL_RenderDrawLine(_renderer, x, 0, x, _windowHeight);
+                }
             }
 
+            
             // Draw hit position line
             SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 255);
             int lineStartX = _lanePositions[0] - (_laneWidth / 2);
             int lineEndX = _lanePositions[3] + (_laneWidth / 2);
             SDL_RenderDrawLine(_renderer, lineStartX, _hitPosition, lineEndX, _hitPosition);
+            
 
             // Draw lane keys
             for (int i = 0; i < 4; i++)
@@ -1749,7 +1802,7 @@ namespace C4TX.SDL.Engine
         }
 
         // Draw the main menu panel and content
-        public static void DrawMainMenuPanel()
+        public static void DrawProfilePanel()
         {
             const int panelWidth = 300;
             const int panelHeight = 300;
@@ -1787,7 +1840,7 @@ namespace C4TX.SDL.Engine
         }
 
         // New method for song selection with improved layout
-        public static void DrawSongSelectionNewLayout(int x, int y, int width, int height)
+        public static void DrawSongSelectionIntern(int x, int y, int width, int height)
         {
             if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0)
                 return;
@@ -2058,14 +2111,14 @@ namespace C4TX.SDL.Engine
 
             if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0 || _selectedSongIndex < 0 || _selectedSongIndex >= _availableBeatmapSets.Count)
             {
-                RenderText("No songs available", x + width / 2, y + height / 2, Color._mutedTextColor, false, true);
+                RenderText("No songs available", x + width / 2, y + height / 2, Color._mutedTextColor, false, true, true);
                 return;
             }
 
             var selectedSet = _availableBeatmapSets[_selectedSongIndex];
             if (selectedSet.Beatmaps.Count == 0)
             {
-                RenderText("No difficulties available", x + width / 2, y + height / 2, Color._mutedTextColor, false, true);
+                RenderText("No difficulties available", x + width / 2, y + height / 2, Color._mutedTextColor, false, true, true);
                 return;
             }
             
@@ -2074,6 +2127,7 @@ namespace C4TX.SDL.Engine
             if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.BackgroundFilename))
             {
                 var beatmapInfo = selectedSet.Beatmaps[_selectedDifficultyIndex];
+                Console.WriteLine($"Loading background image: {beatmapInfo.Path}/{_currentBeatmap.BackgroundFilename}");
                 backgroundTexture = LoadBackgroundTexture(beatmapInfo.Path, _currentBeatmap.BackgroundFilename);
             }
             
@@ -2134,16 +2188,21 @@ namespace C4TX.SDL.Engine
                 SDL_SetTextureAlphaMod(backgroundTexture, 255);
             }
 
+            var currentBeatmap = selectedSet.Beatmaps[_selectedDifficultyIndex];
+
             // Draw song title and artist
             int titleY = y + 30;
-            RenderText(selectedSet.Beatmaps[_selectedDifficultyIndex].Difficulty, x + width / 2, titleY, Color._highlightColor, false, true);
+            RenderText(currentBeatmap.Difficulty, x + width / 2, titleY, Color._highlightColor, false, true, true);
 
-            int artistY = titleY + 40;
-            RenderText(selectedSet.Artist, x + width / 2, artistY, Color._textColor, false, true);
+            int artistY = titleY + 30;
+            RenderText(selectedSet.Artist + " - " + currentBeatmap.Creator, x + width / 2, artistY, Color._textColor, false, true, true);
+
+            int lengthY = artistY + 30;
+            RenderText(MillisToTime(currentBeatmap.Length).ToString() + "", x + width / 2, lengthY, Color._textColor, false, true, true);
 
             // Draw bpm information
-            int rateY = artistY + 40;
-            RenderText((selectedSet.Beatmaps[_selectedDifficultyIndex].BPM * _currentRate).ToString("F2") + " BPM", x + width / 2, rateY, Color._textColor, false, true);
+            int rateY = lengthY + 30;
+            RenderText((currentBeatmap.BPM * _currentRate).ToString("F2") + " BPM", x + width / 2, rateY, Color._textColor, false, true, true);
 
             int diffY = rateY + 70;
 
@@ -2165,11 +2224,17 @@ namespace C4TX.SDL.Engine
                 string diffText = $"{selectedDiff.Difficulty}";
                 if (difficultyRating > 0)
                 {
-                    diffText += $" ({difficultyRating:F2}★)";
+                    diffText += $" ({difficultyRating:F2} ~)";
                 }
                 
-                RenderText(diffText, x + width / 2, diffY, Color._textColor, false, true);
+                RenderText(diffText, x + width / 2, diffY, Color._textColor, false, true, true);
             }
+        }
+
+        public static string MillisToTime(double millis)
+        {
+            TimeSpan time = TimeSpan.FromMilliseconds(millis);
+            return time.ToString(@"mm\:ss");
         }
 
         // Draw the scores panel
@@ -2528,7 +2593,8 @@ namespace C4TX.SDL.Engine
                 "Combo Position",
                 "Note Shape",
                 "Skin",
-                "Accuracy Model"
+                "Accuracy Model",
+                "Show Lane Seperators"
             };
 
             for (int i = 0; i < settingNames.Length; i++)
@@ -2625,6 +2691,16 @@ namespace C4TX.SDL.Engine
                         {
                             string modelName = _accuracyModel.ToString();
                             RenderText(modelName, sliderX + sliderWidth / 2, sliderY, textColor, false, true);
+
+                            // Draw arrows for selection
+                            RenderText("◀", sliderX - 20, sliderY, textColor, false, true);
+                            RenderText("▶", sliderX + sliderWidth + 20, sliderY, textColor, false, true);
+                        }
+                        break;
+                    case 8: // Lane Seperators
+                        {
+                            string value = _showSeperatorLines.ToString();
+                            RenderText(value, sliderX + sliderWidth / 2, sliderY, textColor, false, true);
 
                             // Draw arrows for selection
                             RenderText("◀", sliderX - 20, sliderY, textColor, false, true);

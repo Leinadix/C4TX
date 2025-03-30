@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography.X509Certificates;
 
 namespace C4TX.SDL.Models
 {
@@ -55,6 +56,7 @@ namespace C4TX.SDL.Models
 
         // Cached difficulty rating - if null, it needs to be calculated
         public double? CachedDifficultyRating { get; set; } = null;
+        public string Creator { get; set; }
     }
 
     public class HitObject

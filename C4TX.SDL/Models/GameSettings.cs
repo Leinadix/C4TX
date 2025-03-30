@@ -30,6 +30,7 @@ namespace C4TX.SDL.Models
         public NoteShape NoteShape { get; set; } = NoteShape.Rectangle; // Default note shape
         public string SelectedSkin { get; set; } = "Default"; // Default skin name
         public AccuracyModel AccuracyModel { get; set; } = AccuracyModel.Linear; // Default accuracy calculation model
+        public bool ShowLaneSeparators { get; set; } = true; // Show lane separators
 
         // Constructor with default values
         public GameSettings()

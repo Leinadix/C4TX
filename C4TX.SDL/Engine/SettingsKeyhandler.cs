@@ -36,7 +36,7 @@ namespace C4TX.SDL.Engine
             if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
             {
                 // Move to next setting
-                _currentSettingIndex = (_currentSettingIndex < 7) ? _currentSettingIndex + 1 : 7;
+                _currentSettingIndex = (_currentSettingIndex < 8) ? _currentSettingIndex + 1 : 8;
                 return;
             }
 
@@ -89,78 +89,84 @@ namespace C4TX.SDL.Engine
                                 for (int i = 0; i < 4; i++)
                                 {
                                     _skinService.GetNoteTexture(_selectedSkin, i);
-                                }   
+                                }
                             }
                         }
                         break;
                     case 7: // Accuracy Model
-            // Cycle to previous model
-            int modelCount = Enum.GetValues(typeof(AccuracyModel)).Length;
-            _accuracyModel = (AccuracyModel)((_accuracyModel == 0) ?
-            modelCount - 1 : (int)_accuracyModel - 1);
-            break;
-            }
-            return;
+                        // Cycle to previous model
+                        int modelCount = Enum.GetValues(typeof(AccuracyModel)).Length;
+                        _accuracyModel = (AccuracyModel)((_accuracyModel == 0) ?
+                        modelCount - 1 : (int)_accuracyModel - 1);
+                        break;
+                    case 8: // Show Lane Seperator
+                        _showSeperatorLines = !_showSeperatorLines;
+                        break;
+                }
+                return;
             }
 
             if (scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)
             {
-            // Increase setting value
-            switch (_currentSettingIndex)
-            {
-                case 0: // Playfield Width
-                    _playfieldWidthPercentage = Math.Min(0.95, _playfieldWidthPercentage + 0.05);
-                    break;
-                case 1: // Hit Position
-                    _hitPositionPercentage = Math.Min(95, _hitPositionPercentage + 5);
-                    break;
-                case 2: // Hit Window
-                    _hitWindowMsDefault = Math.Min(500, _hitWindowMsDefault + 10);
-                    break;
-                case 3: // Note Speed
-                    _noteSpeedSetting = Math.Min(5.0, _noteSpeedSetting + 0.1);
-                    break;
-                case 4: // Combo Position
-                    _comboPositionPercentage = Math.Min(90, _comboPositionPercentage + 2);
-                    break;
-                case 5: // Note Shape
-                    // Cycle to next shape
-                    _noteShape = (NoteShape)(((int)_noteShape == (int)NoteShape.Arrow) ? 0 : (int)_noteShape + 1);
-                    break;
-                case 6: // Skin
-                    // Get available skins if not already loaded
-                    if (_availableSkins.Count == 0 && _skinService != null)
-                    {
-                        _availableSkins = _skinService.GetAvailableSkins();
-                    }
-
-                    // Cycle to next skin
-                    if (_availableSkins.Count > 0)
-                    {
-                            _selectedSkinIndex = (_selectedSkinIndex + 1) % _availableSkins.Count;
-                            _selectedSkin = _availableSkins[_selectedSkinIndex].Name;
-
-                        // Immediately load the selected skin textures
-                        if (_skinService != null && _selectedSkin != "Default")
+                // Increase setting value
+                switch (_currentSettingIndex)
+                {
+                    case 0: // Playfield Width
+                        _playfieldWidthPercentage = Math.Min(0.95, _playfieldWidthPercentage + 0.05);
+                        break;
+                    case 1: // Hit Position
+                        _hitPositionPercentage = Math.Min(95, _hitPositionPercentage + 5);
+                        break;
+                    case 2: // Hit Window
+                        _hitWindowMsDefault = Math.Min(500, _hitWindowMsDefault + 10);
+                        break;
+                    case 3: // Note Speed
+                        _noteSpeedSetting = Math.Min(5.0, _noteSpeedSetting + 0.1);
+                        break;
+                    case 4: // Combo Position
+                        _comboPositionPercentage = Math.Min(90, _comboPositionPercentage + 2);
+                        break;
+                    case 5: // Note Shape
+                        // Cycle to next shape
+                        _noteShape = (NoteShape)(((int)_noteShape == (int)NoteShape.Arrow) ? 0 : (int)_noteShape + 1);
+                        break;
+                    case 6: // Skin
+                        // Get available skins if not already loaded
+                        if (_availableSkins.Count == 0 && _skinService != null)
                         {
-                            Console.WriteLine($"[SKIN DEBUG] Immediately loading newly selected skin: {_selectedSkin}");
-                            // Force reload of the skin system
-                            _skinService.ReloadSkins();
-                            // Preload textures
-                            for (int i = 0; i < 4; i++)
+                            _availableSkins = _skinService.GetAvailableSkins();
+                        }
+
+                        // Cycle to next skin
+                        if (_availableSkins.Count > 0)
+                        {
+                                _selectedSkinIndex = (_selectedSkinIndex + 1) % _availableSkins.Count;
+                                _selectedSkin = _availableSkins[_selectedSkinIndex].Name;
+
+                            // Immediately load the selected skin textures
+                            if (_skinService != null && _selectedSkin != "Default")
                             {
-                                _skinService.GetNoteTexture(_selectedSkin, i);
+                                Console.WriteLine($"[SKIN DEBUG] Immediately loading newly selected skin: {_selectedSkin}");
+                                // Force reload of the skin system
+                                _skinService.ReloadSkins();
+                                // Preload textures
+                                for (int i = 0; i < 4; i++)
+                                {
+                                    _skinService.GetNoteTexture(_selectedSkin, i);
+                                }
                             }
                         }
-                    }
-                    break;
-                case 7: // Accuracy Model
-                    // Cycle to next model
-                    int modelCount = Enum.GetValues(typeof(AccuracyModel)).Length;
-                    _accuracyModel = (AccuracyModel)(((int)_accuracyModel + 1) % modelCount);
-                    break;
-            }
-            return;
+                        break;
+                    case 7: // Accuracy Model
+                        // Cycle to next model
+                        int modelCount = Enum.GetValues(typeof(AccuracyModel)).Length;
+                        _accuracyModel = (AccuracyModel)(((int)_accuracyModel + 1) % modelCount);
+                        break;
+                    case 8: // Show Lane Seperator
+                        _showSeperatorLines = !_showSeperatorLines;
+                        break;
+                }
+                return;
             }
         }
     }

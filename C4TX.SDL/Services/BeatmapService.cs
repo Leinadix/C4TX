@@ -88,14 +88,16 @@ namespace C4TX.SDL.Services
                         // Add each beatmap in the set
                         foreach (var osuFile in osuFiles)
                         {
+                            var beatmaploaded = LoadBeatmapFromFile(osuFile);
                             var beatmapInfo = new BeatmapInfo
                             {
                                 Id = Path.GetFileNameWithoutExtension(osuFile),
                                 SetId = setId,
                                 Path = osuFile,
-                                Difficulty = GetDifficultyFromFilename(osuFile),
-                                Length = LoadBeatmapFromFile(osuFile).Length,
-                                BPM = LoadBeatmapFromFile(osuFile).BPM
+                                Difficulty = beatmaploaded.Version,
+                                Length = beatmaploaded.Length,
+                                Creator = beatmaploaded.Creator,
+                                BPM = beatmaploaded.BPM
                             };
 
                             beatmapSet.Beatmaps.Add(beatmapInfo);
@@ -148,6 +150,11 @@ namespace C4TX.SDL.Services
                             beatmap.Version = line.Substring(8).Trim();
                         else if (line.StartsWith("AudioFilename:"))
                             beatmap.AudioFilename = line.Substring(15).Trim();
+                        else if (line.StartsWith("Mode:"))
+                        {
+                            if (line.Substring(5).Trim() != "3")
+                                return null;
+                        }
                         else if (line == "[Events]")
                         {
                             inEvents = true;
@@ -219,6 +226,7 @@ namespace C4TX.SDL.Services
                             int mode = int.Parse(line.Substring(5).Trim());
                             // Mode 3 is mania
                             isMania = mode == 3;
+                            if (!isMania) return null;
                         }
                         else if (line.StartsWith("CircleSize:"))
                         {
@@ -244,7 +252,7 @@ namespace C4TX.SDL.Services
                             {
                                 var parts = line.Split(',');
                                 
-                                if (parts.Length > 8)
+                                if (parts.Length < 8)
                                     continue;
 
                                 if (parts[6] == "1")
