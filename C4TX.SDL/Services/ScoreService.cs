@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using C4TX.SDL.Models;
+using static C4TX.SDL.Engine.GameEngine;
 
 namespace C4TX.SDL.Services
 {
@@ -68,7 +69,10 @@ namespace C4TX.SDL.Services
                 { 
                     WriteIndented = true 
                 });
-                
+
+                string jsononline = JsonSerializer.Serialize(scoreData);
+
+                _apiService.UploadScore(jsononline);
                 File.WriteAllText(filePath, json);
                 
                 Console.WriteLine($"Score saved: {filePath}");

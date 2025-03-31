@@ -49,13 +49,13 @@ namespace C4TX.SDL.Engine
                         _playfieldWidthPercentage = Math.Max(0.2, _playfieldWidthPercentage - 0.05);
                         break;
                     case 1: // Hit Position
-                        _hitPositionPercentage = Math.Max(20, _hitPositionPercentage - 5);
+                        _hitPositionPercentage = Math.Max(20, _hitPositionPercentage - 1);
                         break;
                     case 2: // Hit Window
                         _hitWindowMsDefault = Math.Max(20, _hitWindowMsDefault - 10);
                         break;
                     case 3: // Note Speed
-                        _noteSpeedSetting = Math.Max(0.2, _noteSpeedSetting - 0.1);
+                        _noteSpeedSetting = Math.Max(0.2, _noteSpeedSetting - 0.05);
                         break;
                     case 4: // Combo Position
                         _comboPositionPercentage = Math.Max(2, _comboPositionPercentage - 2);
@@ -115,13 +115,13 @@ namespace C4TX.SDL.Engine
                         _playfieldWidthPercentage = Math.Min(0.95, _playfieldWidthPercentage + 0.05);
                         break;
                     case 1: // Hit Position
-                        _hitPositionPercentage = Math.Min(95, _hitPositionPercentage + 5);
+                        _hitPositionPercentage = Math.Min(95, _hitPositionPercentage + 1);
                         break;
                     case 2: // Hit Window
                         _hitWindowMsDefault = Math.Min(500, _hitWindowMsDefault + 10);
                         break;
                     case 3: // Note Speed
-                        _noteSpeedSetting = Math.Min(5.0, _noteSpeedSetting + 0.1);
+                        _noteSpeedSetting = Math.Min(5.0, _noteSpeedSetting + 0.05);
                         break;
                     case 4: // Combo Position
                         _comboPositionPercentage = Math.Min(90, _comboPositionPercentage + 2);

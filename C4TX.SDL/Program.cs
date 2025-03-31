@@ -37,19 +37,11 @@ namespace C4TX.SDL
                 // Load available profiles
                 GameEngine._availableProfiles = GameEngine._profileService.GetAllProfiles();
                 
-                // If no profiles exist, stay in profile selection mode
-                // Otherwise, if just one profile exists, auto-select it
-                if (GameEngine._availableProfiles.Count == 1)
-                {
-                    GameEngine._username = GameEngine._availableProfiles[0].Username;
-                    GameEngine.LoadSettings();
-                    GameEngine._currentState = GameEngine.GameState.Menu;
-                }
-                else
-                {
-                    GameEngine._currentState = GameEngine.GameState.ProfileSelect;
-                }
-                
+                // Initialize API service
+                GameEngine._apiService = new Services.ApiService();
+
+                GameEngine._currentState = GameEngine.GameState.ProfileSelect;
+
                 RenderEngine.ToggleFullscreen();
                 
                 // Remove the automatic game start

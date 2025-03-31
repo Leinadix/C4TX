@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using C4TX.SDL.Models;
+using static C4TX.SDL.Engine.GameEngine;
 
 namespace C4TX.SDL.Services
 {
@@ -76,7 +77,73 @@ namespace C4TX.SDL.Services
                 Console.WriteLine($"Error saving profile: {ex.Message}");
             }
         }
-        
+
+        public static async Task<bool> AuthenticateExistingProfile()
+        {
+            if (_availableProfiles.Count == 0 || _selectedProfileIndex < 0 || _selectedProfileIndex >= _availableProfiles.Count)
+            {
+                return false;
+            }
+
+            Profile selectedProfile = _availableProfiles[_selectedProfileIndex];
+            _isAuthenticating = true;
+            _authError = "";
+
+            try
+            {
+                // Attempt to login
+                var (loginSuccess, loginMessage, token) = await _apiService.LoginAsync(_email, _password);
+
+                if (!loginSuccess || string.IsNullOrEmpty(token))
+                {
+                    _authError = loginMessage;
+                    _isAuthenticating = false;
+                    return false;
+                }
+
+                // Get API key
+                var (apiKeySuccess, apiKeyMessage, apiKey) = await _apiService.GetApiKeyAsync(token);
+
+                if (!apiKeySuccess || string.IsNullOrEmpty(apiKey))
+                {
+                    _authError = apiKeyMessage;
+                    _isAuthenticating = false;
+                    return false;
+                }
+
+                // Update the profile with auth info
+                selectedProfile.Email = _email;
+                selectedProfile.Password = _password; // Note: In a real app, you'd want to store this securely
+                selectedProfile.ApiKey = apiKey;
+                selectedProfile.IsAuthenticated = true;
+
+                // Save the updated profile
+                _profileService.SaveProfile(selectedProfile);
+
+                // Refresh the profiles list
+                _availableProfiles = _profileService.GetAllProfiles();
+
+                // Exit login mode
+                _isLoggingIn = false;
+                _authError = "";
+
+                // Set username and load settings
+                _username = selectedProfile.Username;
+                LoadSettings();
+
+                // Switch to menu
+                _currentState = GameState.Menu;
+            }
+            catch (Exception ex)
+            {
+                _authError = $"Authentication error: {ex.Message}";
+                return false;
+            }
+
+            _isAuthenticating = false;
+            return true;
+        }
+
         // Get a specific profile
         public Profile? GetProfile(string username)
         {
@@ -95,7 +162,6 @@ namespace C4TX.SDL.Services
                 {
                     string json = File.ReadAllText(profileFilePath);
                     Profile? profile = JsonSerializer.Deserialize<Profile>(json);
-                    
                     return profile;
                 }
             }

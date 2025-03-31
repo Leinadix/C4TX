@@ -54,6 +54,8 @@ namespace C4TX.SDL.Engine
                     // Calculate miss count - misses are already in _noteHits with 500ms deviation
                     MissCount = _noteHits.Count(h => Math.Abs(h.Deviation) >= 500),
 
+                    starRating = (new DifficultyRatingService()).CalculateDifficulty(_currentBeatmap!, _currentRate),
+
                     // Calculate average deviation
                     AverageDeviation = _noteHits.Count > 0 ? _noteHits.Average(h => h.Deviation) : 0
                 };

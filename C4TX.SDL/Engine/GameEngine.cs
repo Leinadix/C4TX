@@ -5,11 +5,16 @@ using ManagedBass.Fx;
 using SDL2;
 using System.Diagnostics;
 using static SDL2.SDL;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace C4TX.SDL.Engine
 {
     public class GameEngine : IDisposable
     {
+        // SDL constants
+        private const int SDL_TEXTINPUTEVENT_TEXT_SIZE = 32;
+        
         public static BeatmapService _beatmapService;
         public static ScoreService _scoreService;
         public static SettingsService _settingsService;
@@ -120,6 +125,15 @@ namespace C4TX.SDL.Engine
         public static bool _isProfileNameInvalid = false;
         public static string _profileNameError = "";
         public static bool _isDeletingProfile = false;
+        
+        // Auth handling
+        public static ApiService _apiService = new ApiService();
+        public static string _email = "";
+        public static string _password = "";
+        public static bool _isLoggingIn = false;
+        public static string _loginInputFocus = "email"; // can be "email" or "password"
+        public static string _authError = "";
+        public static bool _isAuthenticating = false;
 
         // For results screen
         public static List<(double NoteTime, double HitTime, double Deviation)> _noteHits = new List<(double, double, double)>();
@@ -140,6 +154,11 @@ namespace C4TX.SDL.Engine
         public static List<ScoreData> _cachedScores = new List<ScoreData>();
         public static bool _hasLoggedCacheHit = false; // Track if we've already logged cache hit for current hash
         public static bool _hasCheckedCurrentHash = false; // Track if we've checked the current hash, even if no scores found
+
+        // Text input composition string (for IME)
+        private static string _compositionText = string.Empty;
+        private static int _compositionCursor = 0;
+        private static int _compositionSelectionLen = 0;
 
         public GameEngine(string? songsDirectory = null)
         {
@@ -166,12 +185,16 @@ namespace C4TX.SDL.Engine
         // Initialize SDL
         public bool Initialize()
         {
-            if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0)
+            // Initialize SDL
+            if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) < 0)
             {
                 Console.WriteLine($"SDL could not initialize! SDL_Error: {SDL_GetError()}");
                 return false;
             }
-            
+
+            // Start text input to be aware of keyboard layouts
+            SDL_StartTextInput();
+
             // Initialize SDL_image for loading PNG, JPG, and other image formats
             try
             {
@@ -382,10 +405,26 @@ namespace C4TX.SDL.Engine
         // The main game loop
         public static void Run()
         {
-            SDL_Event e;
-
+            // Start the game timer
+            _gameTimer = Stopwatch.StartNew();
+            
+            // Check for authenticated profiles on startup
+            foreach (var profile in _availableProfiles)
+            {
+                if (!string.IsNullOrEmpty(profile.ApiKey))
+                {
+                    profile.IsAuthenticated = true;
+                    _profileService.SaveProfile(profile);
+                }
+            }
+            
             while (RenderEngine._isRunning)
             {
+                // Update timing
+                _currentTime = _gameTimer.ElapsedMilliseconds;
+
+                SDL_Event e;
+
                 // Process events
                 while (SDL_PollEvent(out e) != 0)
                 {
@@ -400,6 +439,23 @@ namespace C4TX.SDL.Engine
                     else if (e.type == SDL_EventType.SDL_KEYUP)
                     {
                         HandleKeyUp(e.key.keysym.scancode);
+                    }
+                    else if (e.type == SDL_EventType.SDL_TEXTINPUT)
+                    {
+                        // Using Marshal to convert the text input to a string safely
+                        // This handles keyboard layout awareness properly
+                        string text = SDL_GetEventText(e);
+                        
+                        // Process the text input based on the current game state
+                        if (_currentState == GameState.ProfileSelect)
+                        {
+                            ProfileKeyhandler.ProcessTextInput(text);
+                        }
+                        // Add more states if they need text input
+                    }
+                    else if (e.type == SDL_EventType.SDL_TEXTEDITING)
+                    {
+                        // IME composition text handling can be added here if needed
                     }
                 }
 
@@ -517,6 +573,95 @@ namespace C4TX.SDL.Engine
                     }
                 }
             }
+        }
+
+        // Handle text input events - these respect keyboard layout and IME
+        public static void HandleTextInput(string text)
+        {
+            // Clear composition when we get the final text
+            _compositionText = string.Empty;
+
+            // Handle text input based on current state and focus
+            switch (_currentState)
+            {
+                case GameState.ProfileSelect:
+                    if (_isCreatingProfile)
+                    {
+                        // Add text to the appropriate field based on focus
+                        switch (_loginInputFocus)
+                        {
+                            case "username":
+                                if (_username.Length < MAX_USERNAME_LENGTH)
+                                    _username += text;
+                                break;
+                            case "email":
+                                _email += text;
+                                break;
+                            case "password":
+                                _password += text;
+                                break;
+                        }
+                    }
+                    else if (_isLoggingIn)
+                    {
+                        // Add text to the appropriate field based on focus
+                        switch (_loginInputFocus)
+                        {
+                            case "email":
+                                _email += text;
+                                break;
+                            case "password":
+                                _password += text;
+                                break;
+                        }
+                    }
+                    break;
+                    
+                // Handle text input for other states as needed
+                case GameState.Menu:
+                    // For future text input in menu state
+                    break;
+                    
+                case GameState.Settings:
+                    // For future text input in settings state
+                    break;
+            }
+        }
+
+        // Handle text editing events for IME composition
+        public static void HandleTextEditing(string text, int cursor, int selectionLen)
+        {
+            _compositionText = text;
+            _compositionCursor = cursor;
+            _compositionSelectionLen = selectionLen;
+            
+            // This method will be used when implementing full IME support
+            // for languages like Chinese, Japanese, Korean, etc.
+        }
+
+        // Enable text input mode
+        public static void StartTextInput()
+        {
+            SDL_StartTextInput();
+        }
+
+        // Disable text input mode
+        public static void StopTextInput()
+        {
+            SDL_StopTextInput();
+        }
+
+        // Set the rectangle where text input will appear (for IME candidate window positioning)
+        public static void SetTextInputRect(int x, int y, int w, int h)
+        {
+            SDL_Rect rect = new SDL_Rect
+            {
+                x = x,
+                y = y,
+                w = w,
+                h = h
+            };
+            SDL_SetTextInputRect(ref rect);
         }
 
         public static void CheckForHits(int lane)
@@ -867,37 +1012,55 @@ namespace C4TX.SDL.Engine
             }
         }
 
-        // Load settings from file
+        // Load user settings
         public static void LoadSettings()
         {
-            try
+            if (string.IsNullOrEmpty(_username))
             {
-                // Use a default username if none is set yet
-                string username = string.IsNullOrEmpty(_username) ? "default" : _username;
-
-                var settings = _settingsService.LoadSettings(username);
-
-                // Apply loaded settings
-                _playfieldWidthPercentage = settings.PlayfieldWidthPercentage;
-                _hitPositionPercentage = settings.HitPositionPercentage;
-                _hitWindowMsDefault = settings.HitWindowMs;
-                _noteSpeedSetting = settings.NoteSpeedSetting;
-                _comboPositionPercentage = settings.ComboPositionPercentage;
-                _noteShape = (NoteShape)(int)settings.NoteShape;
-                _selectedSkin = settings.SelectedSkin;
-                _accuracyModel = settings.AccuracyModel;
-                _showSeperatorLines = settings.ShowLaneSeparators;
-
-                // Update accuracy service with current model and hit window
-                _accuracyService.SetModel(_accuracyModel);
-                _accuracyService.SetHitWindow(_hitWindowMsDefault);
-
-                Console.WriteLine($"Settings loaded and applied for user: {username}");
+                // No username, use default settings
+                return;
             }
-            catch (Exception ex)
+
+            GameSettings settings = _settingsService.LoadSettings(_username);
+
+            // Apply the loaded settings
+            _playfieldWidthPercentage = settings.PlayfieldWidthPercentage;
+            _hitPositionPercentage = settings.HitPositionPercentage;
+            _hitWindowMs = settings.HitWindowMs;
+            _comboPositionPercentage = settings.ComboPositionPercentage;
+            _noteSpeedSetting = settings.NoteSpeedSetting;
+            _noteShape = settings.NoteShape;
+            _selectedSkin = settings.SelectedSkin;
+            _accuracyModel = settings.AccuracyModel;
+            
+            // Find the selected skin index
+            if (_skinService != null)
             {
-                Console.WriteLine($"Error loading settings: {ex.Message}");
-                // Keep using default values
+                _availableSkins = _skinService.GetAvailableSkins();
+                _selectedSkinIndex = _availableSkins.FindIndex(s => s.Name == _selectedSkin);
+                if (_selectedSkinIndex < 0) _selectedSkinIndex = 0;
+            }
+            
+            // Set the selected skin
+            if (_skinService != null && _selectedSkinIndex >= 0 && _selectedSkinIndex < _availableSkins.Count)
+            {
+                _selectedSkin = _availableSkins[_selectedSkinIndex].Name;
+            }
+            
+            // Set accuracy model
+            _accuracyService.SetModel(_accuracyModel);
+            _accuracyService.SetHitWindow(_hitWindowMs);
+            
+            // Recalculate playfield if needed
+            RenderEngine.InitializePlayfield();
+            
+            // Check profile authentication
+            Profile? profile = _profileService.GetProfile(_username);
+
+            if (profile != null && !profile.IsAuthenticated && !string.IsNullOrEmpty(profile.ApiKey))
+            {
+                profile.IsAuthenticated = true;
+                _profileService.SaveProfile(profile);
             }
         }
 
@@ -913,10 +1076,10 @@ namespace C4TX.SDL.Engine
                 {
                     PlayfieldWidthPercentage = _playfieldWidthPercentage,
                     HitPositionPercentage = _hitPositionPercentage,
-                    HitWindowMs = _hitWindowMsDefault,
+                    HitWindowMs = _hitWindowMs,
                     NoteSpeedSetting = _noteSpeedSetting,
                     ComboPositionPercentage = _comboPositionPercentage,
-                    NoteShape = (Models.NoteShape)(int)_noteShape,
+                    NoteShape = _noteShape,
                     SelectedSkin = _selectedSkin,
                     AccuracyModel = _accuracyModel,
                     ShowLaneSeparators = _showSeperatorLines
@@ -927,7 +1090,7 @@ namespace C4TX.SDL.Engine
 
                 // Update accuracy service with current settings
                 _accuracyService.SetModel(_accuracyModel);
-                _accuracyService.SetHitWindow(_hitWindowMsDefault);
+                _accuracyService.SetHitWindow(_hitWindowMs);
 
                 // Force clean reload of skin system
                 if (_skinService != null)
@@ -957,6 +1120,34 @@ namespace C4TX.SDL.Engine
             {
                 Console.WriteLine($"Error saving settings: {ex.Message}");
             }
+        }
+
+        // Gets text from an SDL_TextInputEvent
+        private static string SDL_GetEventText(SDL_Event e)
+        {
+            if (e.type != SDL_EventType.SDL_TEXTINPUT)
+                return string.Empty;
+
+            // Create a temporary string to accumulate the characters
+            StringBuilder sb = new StringBuilder();
+            
+            // SDL uses fixed-size arrays of bytes for text in events
+            // We need to read until the null terminator or the end of the array
+            unsafe
+            {
+                // Maximum text size in SDL_TextInputEvent
+                const int maxSize = 32; // SDL_TEXTINPUTEVENT_TEXT_SIZE
+                
+                // Access the text field data directly
+                for (int i = 0; i < maxSize; i++)
+                {
+                    byte b = e.text.text[i];
+                    if (b == 0) break; // null terminator
+                    sb.Append((char)b);
+                }
+            }
+            
+            return sb.ToString();
         }
     }
 }

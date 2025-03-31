@@ -11,6 +11,12 @@ namespace C4TX.SDL.Models
         public DateTime CreatedDate { get; set; } = DateTime.Now;
         public DateTime LastPlayedDate { get; set; } = DateTime.Now;
         
+        // Auth info
+        public string Email { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+        public string ApiKey { get; set; } = string.Empty;
+        public bool IsAuthenticated { get; set; } = false;
+        
         // Stats
         public int TotalPlayCount { get; set; } = 0;
         public int TotalScore { get; set; } = 0;

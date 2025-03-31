@@ -34,7 +34,8 @@ namespace C4TX.SDL.Models
         public int GoodHits { get; set; }
         public int OkHits { get; set; }
         public int MissCount { get; set; }
-        
+        public double starRating { get; set; }
+
         // Average deviation (early/late)
         public double AverageDeviation { get; set; }
         
