@@ -774,11 +774,16 @@ namespace C4TX.SDL.Services
         }
 
         // Get complete details for a beatmap directly from the database
-        public (string Creator, double BPM, double Length) GetBeatmapDetails(string beatmapId, string setId)
+        public (string Creator, double BPM, double Length, string Title, string Artist, string Source, string Tags, int PreviewTime) GetBeatmapDetails(string beatmapId, string setId)
         {
             string creator = "";
             double bpm = 0;
             double length = 0;
+            string title = "";
+            string artist = "";
+            string source = "";
+            string tags = "";
+            int previewTime = 0;
 
             try
             {
@@ -805,15 +810,21 @@ namespace C4TX.SDL.Services
                     Console.WriteLine($"Found {count} beatmap sets with ID {setId}");
                 }
 
-                // Get creator from BeatmapSets
-                using (var creatorCmd = new SqliteCommand(
-                    "SELECT Creator FROM BeatmapSets WHERE Id = @SetId", connection))
+                // Get metadata from BeatmapSets
+                using (var metadataCmd = new SqliteCommand(
+                    "SELECT Creator, Title, Artist, Source, Tags, PreviewTime FROM BeatmapSets WHERE Id = @SetId", connection))
                 {
-                    creatorCmd.Parameters.AddWithValue("@SetId", setId);
-                    var creatorResult = creatorCmd.ExecuteScalar();
-                    if (creatorResult != null && creatorResult != DBNull.Value)
+                    metadataCmd.Parameters.AddWithValue("@SetId", setId);
+                    using var reader = metadataCmd.ExecuteReader();
+                    
+                    if (reader.Read())
                     {
-                        creator = Convert.ToString(creatorResult) ?? "";
+                        creator = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                        title = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                        artist = reader.IsDBNull(2) ? "" : reader.GetString(2);
+                        source = reader.IsDBNull(3) ? "" : reader.GetString(3);
+                        tags = reader.IsDBNull(4) ? "" : reader.GetString(4);
+                        previewTime = reader.IsDBNull(5) ? 0 : reader.GetInt32(5);
                     }
                 }
 
@@ -835,7 +846,7 @@ namespace C4TX.SDL.Services
                 Console.WriteLine($"Error getting beatmap details: {ex.Message}");
             }
 
-            return (creator, bpm, length);
+            return (creator, bpm, length, title, artist, source, tags, previewTime);
         }
 
         // Method to clear corrupted beatmap entries when the directory is missing
@@ -934,79 +945,69 @@ namespace C4TX.SDL.Services
                 
                 if (newBeatmapFiles.Count == 0)
                 {
-                    return newBeatmaps;  // No new maps found
+                    return newBeatmaps;
                 }
                 
-                // Group the new beatmaps by directory
+                // Group beatmap files by directory to create sets
                 var beatmapsByDir = newBeatmapFiles
-                    .GroupBy(f => Path.GetDirectoryName(f) ?? string.Empty)
-                    .Where(g => !string.IsNullOrEmpty(g.Key))
-                    .ToDictionary(g => g.Key, g => g.ToList());
+                    .GroupBy(file => Path.GetDirectoryName(file) ?? string.Empty)
+                    .ToDictionary(
+                        group => group.Key,
+                        group => group.ToList()
+                    );
                 
-                Console.WriteLine($"Found new beatmaps in {beatmapsByDir.Count} directories");
-                
-                // Keep track of new beatmap sets to save to database
+                // Create new beatmap sets or add to existing ones
                 Dictionary<string, BeatmapSet> newBeatmapSets = new Dictionary<string, BeatmapSet>();
                 
-                // Process each directory with new maps
+                // Process each directory
                 foreach (var dir in beatmapsByDir.Keys)
                 {
-                    // Get directory hash
+                    if (string.IsNullOrEmpty(dir) || beatmapsByDir[dir].Count == 0)
+                        continue;
+                    
+                    // Get directory hash for identification
                     string dirHash = CalculateDirectoryHash(dir);
                     
-                    // Check if this set already exists
-                    BeatmapSet? existingSet = existingSets.FirstOrDefault(s => s.Id == dirHash);
+                    // Check if this set already exists in our database
+                    var existingSet = existingSets.FirstOrDefault(s => s.Id == dirHash);
                     
-                    // If the set exists, we'll add new beatmaps to it
-                    // If not, we'll create a new set
-                    BeatmapSet currentSet;
-                    if (existingSet != null)
+                    // Create a new set if it doesn't exist
+                    if (existingSet == null && !newBeatmapSets.ContainsKey(dirHash))
                     {
-                        currentSet = existingSet;
-                    }
-                    else
-                    {
-                        // Get directory name for the set name
-                        string dirName = new DirectoryInfo(dir).Name;
+                        // Try to load a beatmap to get basic info
+                        var firstBeatmap = new BeatmapService(this, new DifficultyRatingService())
+                            .LoadBasicInfoFromFile(beatmapsByDir[dir][0]);
                         
-                        // Create a new set (we'll fill in details later)
-                        currentSet = new BeatmapSet
+                        if (firstBeatmap == null)
+                            continue;
+                        
+                        // Create a new set with metadata from the first beatmap
+                        var newSet = new BeatmapSet
                         {
                             Id = dirHash,
-                            Name = dirName,
-                            Path = dir,
+                            Title = firstBeatmap.Title,
+                            Artist = firstBeatmap.Artist,
+                            Creator = firstBeatmap.Creator,
                             DirectoryPath = dir,
                             Beatmaps = new List<BeatmapInfo>()
                         };
                         
-                        // Determine the MapPack (parent directory name)
-                        try
-                        {
-                            var directoryInfo = new DirectoryInfo(dir);
-                            if (directoryInfo.Parent != null)
-                            {
-                                currentSet.MapPack = directoryInfo.Parent.FullName;
-                            }
-                            else
-                            {
-                                currentSet.MapPack = dir; // Fallback to the current directory if no parent
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"Error determining MapPack for {dir}: {ex.Message}");
-                            currentSet.MapPack = dir; // Fallback to directory path
-                        }
-                        
                         // Add to the dictionary of new sets
-                        newBeatmapSets[dirHash] = currentSet;
+                        newBeatmapSets[dirHash] = newSet;
                     }
+                    
+                    // Get the set we'll add beatmaps to
+                    BeatmapSet currentSet = existingSet ?? newBeatmapSets[dirHash];
                     
                     // Process each new beatmap file
                     foreach (var beatmapFile in beatmapsByDir[dir])
                     {
                         try
                         {
+                            // Try to load the basic info to get version, etc.
+                            var basicInfo = new BeatmapService(this, new DifficultyRatingService())
+                                .LoadBasicInfoFromFile(beatmapFile);
+                            
                             // Calculate map hash
                             string mapHash = CalculateFileHash(beatmapFile);
                             
@@ -1015,7 +1016,12 @@ namespace C4TX.SDL.Services
                             {
                                 Id = mapHash,
                                 SetId = currentSet.Id,
-                                Path = beatmapFile
+                                Path = beatmapFile,
+                                // Copy metadata from the set
+                                Version = basicInfo?.Version ?? "",
+                                Difficulty = basicInfo?.Version ?? "",
+                                // Also copy audio filename if available
+                                AudioFilename = basicInfo?.AudioFilename ?? ""
                             };
                             
                             // Add to the appropriate collection

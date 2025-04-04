@@ -565,23 +565,6 @@ namespace C4TX.SDL.Engine
                     AudioEngine.AdjustVolume(0.1f);
                     return;
                 }
-                else if (scancode == SDL_Scancode.SDL_SCANCODE_0 ||
-                         scancode == SDL_Scancode.SDL_SCANCODE_M)
-                {
-                    // Toggle mute (0% or 70%)
-                    if (AudioEngine._volume > 0)
-                    {
-                        // Store current volume and mute
-                        _lastVolume = AudioEngine._volume;
-                        AudioEngine.AdjustVolume(-AudioEngine._volume); // Set to 0
-                    }
-                    else
-                    {
-                        // Restore volume
-                        AudioEngine.AdjustVolume(_lastVolume > 0 ? _lastVolume : 0.7f);
-                    }
-                    return;
-                }
 
                 // Rate adjustment in menu
                 if (scancode == SDL_Scancode.SDL_SCANCODE_1)

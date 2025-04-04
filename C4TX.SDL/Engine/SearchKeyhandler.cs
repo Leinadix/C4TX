@@ -12,74 +12,159 @@ namespace C4TX.SDL.Engine
     {
         public static void HandleSearchKeys(SDL_Scancode scancode)
         {
-            // If we're in search mode, handle search-specific keys
             if (_isSearching)
             {
-                // Escape to cancel search mode
+                // ESC key cancels search and returns to normal mode
                 if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
                 {
                     ExitSearchMode();
                     return;
                 }
                 
-                // Enter to search (if search has content)
+                // Enter key submits the search query, or if results are already shown,
+                // selects the currently selected beatmap
                 if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
                 {
-                    if (!string.IsNullOrWhiteSpace(_searchQuery))
+                    if (_isSearchInputFocused)
                     {
-                        // Check if we're already showing results 
-                        if (_showSearchResults)
+                        _isSearchInputFocused = false;
+                        PerformSearch();
+                    }
+                    else if (_showSearchResults)
+                    {
+                        // First commit the search selection - this will update the actual beatmap selection
+                        // and load the correct beatmap
+                        CommitSearchSelection();
+                        
+                        // Only if we're no longer in search mode (meaning CommitSearchSelection succeeded)
+                        // should we try to start the game
+                        if (!_isSearching && _availableBeatmapSets != null && _availableBeatmapSets.Count > 0 &&
+                            _selectedSongIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count &&
+                            _selectedDifficultyIndex >= 0 && _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
                         {
-                            // If search results are showing, Enter selects the current result
-                            CommitSearchSelection();
-                        }
-                        else
-                        {
-                            // Otherwise it performs the search
-                            PerformSearch();
+                            // This is the standard behavior when Enter is pressed on a beatmap
+                            // in the regular song selection screen
+                            if (!string.IsNullOrWhiteSpace(_username))
+                            {
+                                Start(); // This calls GameEngine.Start() to start the game
+                            }
+                            else
+                            {
+                                // If no username, switch to profile selection
+                                _availableProfiles = _profileService.GetAllProfiles();
+                                _currentState = GameState.ProfileSelect;
+                            }
                         }
                     }
                     return;
                 }
                 
-                // Backspace to delete characters
-                if (scancode == SDL_Scancode.SDL_SCANCODE_BACKSPACE)
+                if (_isSearchInputFocused)
                 {
-                    if (_searchQuery.Length > 0)
+                    // Backspace removes the last character from the query
+                    if (scancode == SDL_Scancode.SDL_SCANCODE_BACKSPACE)
                     {
-                        _searchQuery = _searchQuery.Substring(0, _searchQuery.Length - 1);
-                        
-                        // If search query becomes empty, clear results
-                        if (_searchQuery.Length == 0)
+                        if (_searchQuery.Length > 0)
                         {
-                            _searchResults.Clear();
-                            _showSearchResults = false;
+                            _searchQuery = _searchQuery.Substring(0, _searchQuery.Length - 1);
+                            
+                            // If search query becomes empty, clear results
+                            if (_searchQuery.Length == 0)
+                            {
+                                _searchResults.Clear();
+                                _showSearchResults = false;
+                            }
                         }
+                        return;
                     }
-                    return;
                 }
                 
                 // After we show results, we can navigate through them
                 if (_showSearchResults && _searchResults.Count > 0)
                 {
+                    // Get set and diff position for the current selection
+                    var setDiffPosition = GetSetAndDiffFromFlatIndex(_selectedSongIndex);
+                    if (setDiffPosition.SetIndex < 0)
+                    {
+                        // Could not find the position, can't do proper grouped navigation
+                        return;
+                    }
+                    
+                    int currentSetIndex = setDiffPosition.SetIndex;
+                    int currentDiffIndex = setDiffPosition.DiffIndex;
+                    
+                    if (scancode == SDL_Scancode.SDL_SCANCODE_LEFT)
+                    {
+                        // Move to previous set
+                        int targetSetIndex = (currentSetIndex > 0) ? currentSetIndex - 1 : _searchResults.Count - 1;
+                        
+                        if (targetSetIndex >= 0 && targetSetIndex < _searchResults.Count &&
+                            _searchResults[targetSetIndex].Beatmaps != null && 
+                            _searchResults[targetSetIndex].Beatmaps.Count > 0)
+                        {
+                            // Calculate the flat index of the first beatmap in the target set
+                            int newFlatIndex = GetFlatIndexFromSetAndDiff(targetSetIndex, 0);
+                            if (newFlatIndex >= 0)
+                            {
+                                _selectedSongIndex = newFlatIndex;
+                                LoadPreviewForSearchResult(_selectedSongIndex);
+                                Console.WriteLine($"Moving to previous set: {targetSetIndex}, flat index: {newFlatIndex}");
+                            }
+                        }
+                        
+                        return;
+                    }
+                    
+                    if (scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)
+                    {
+                        // Move to next set
+                        int targetSetIndex = (currentSetIndex < _searchResults.Count - 1) ? currentSetIndex + 1 : 0;
+                        
+                        if (targetSetIndex >= 0 && targetSetIndex < _searchResults.Count &&
+                            _searchResults[targetSetIndex].Beatmaps != null && 
+                            _searchResults[targetSetIndex].Beatmaps.Count > 0)
+                        {
+                            // Calculate the flat index of the first beatmap in the target set
+                            int newFlatIndex = GetFlatIndexFromSetAndDiff(targetSetIndex, 0);
+                            if (newFlatIndex >= 0)
+                            {
+                                _selectedSongIndex = newFlatIndex;
+                                LoadPreviewForSearchResult(_selectedSongIndex);
+                                Console.WriteLine($"Moving to next set: {targetSetIndex}, flat index: {newFlatIndex}");
+                            }
+                        }
+                        
+                        return;
+                    }
+                    
                     if (scancode == SDL_Scancode.SDL_SCANCODE_UP)
                     {
-                        // Move selection up
-                        if (_selectedSongIndex > 0)
+                        // Only navigate within the current set
+                        if (currentDiffIndex > 0)
                         {
-                            _selectedSongIndex--;
-                            LoadPreviewForSearchResult(_selectedSongIndex);
+                            int newFlatIndex = GetFlatIndexFromSetAndDiff(currentSetIndex, currentDiffIndex - 1);
+                            if (newFlatIndex >= 0)
+                            {
+                                _selectedSongIndex = newFlatIndex;
+                                LoadPreviewForSearchResult(_selectedSongIndex);
+                                Console.WriteLine($"Moving up in set {currentSetIndex} to diff {currentDiffIndex - 1}, flat index: {newFlatIndex}");
+                            }
                         }
                         return;
                     }
                     
                     if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
                     {
-                        // Move selection down
-                        if (_selectedSongIndex < GetTotalBeatmapsCount() - 1)
+                        // Only navigate within the current set
+                        if (currentDiffIndex < _searchResults[currentSetIndex].Beatmaps.Count - 1)
                         {
-                            _selectedSongIndex++;
-                            LoadPreviewForSearchResult(_selectedSongIndex);
+                            int newFlatIndex = GetFlatIndexFromSetAndDiff(currentSetIndex, currentDiffIndex + 1);
+                            if (newFlatIndex >= 0)
+                            {
+                                _selectedSongIndex = newFlatIndex;
+                                LoadPreviewForSearchResult(_selectedSongIndex);
+                                Console.WriteLine($"Moving down in set {currentSetIndex} to diff {currentDiffIndex + 1}, flat index: {newFlatIndex}");
+                            }
                         }
                         return;
                     }
@@ -136,6 +221,8 @@ namespace C4TX.SDL.Engine
             {
                 // Find the beatmap at the selected flat index
                 int currentIndex = 0;
+                string selectedBeatmapPath = string.Empty;
+                
                 foreach (var set in _searchResults)
                 {
                     if (set.Beatmaps != null)
@@ -153,12 +240,31 @@ namespace C4TX.SDL.Engine
                                         {
                                             if (_availableBeatmapSets[i].Beatmaps[j].Id == beatmap.Id)
                                             {
+                                                // Save the beatmap path so we can load it properly
+                                                selectedBeatmapPath = _availableBeatmapSets[i].Beatmaps[j].Path;
+                                                
                                                 // Now update the actual selection
                                                 _selectedSongIndex = i;
                                                 _selectedDifficultyIndex = j;
                                                 
                                                 // Exit search mode
                                                 ExitSearchMode();
+                                                
+                                                // Make sure the right beatmap is loaded before proceeding
+                                                if (!string.IsNullOrEmpty(selectedBeatmapPath))
+                                                {
+                                                    // Load the selected beatmap
+                                                    BeatmapEngine.LoadBeatmap(selectedBeatmapPath);
+                                                    
+                                                    // Refresh beatmap data from database
+                                                    BeatmapEngine.RefreshSelectedBeatmapFromDatabase();
+                                                    
+                                                    // Clear cached scores when beatmap changes
+                                                    _cachedScoreMapHash = string.Empty;
+                                                    _cachedScores.Clear();
+                                                    _hasCheckedCurrentHash = false;
+                                                }
+                                                
                                                 return;
                                             }
                                         }
@@ -347,6 +453,59 @@ namespace C4TX.SDL.Engine
             {
                 Console.WriteLine($"Error loading preview for search result: {ex.Message}");
             }
+        }
+        
+        // Helper to convert from flat index to set/diff coordinates
+        public static (int SetIndex, int DiffIndex) GetSetAndDiffFromFlatIndex(int flatIndex)
+        {
+            if (flatIndex < 0 || _searchResults == null) 
+                return (-1, -1);
+                
+            int count = 0;
+            
+            for (int setIndex = 0; setIndex < _searchResults.Count; setIndex++)
+            {
+                if (_searchResults[setIndex].Beatmaps != null)
+                {
+                    for (int diffIndex = 0; diffIndex < _searchResults[setIndex].Beatmaps.Count; diffIndex++)
+                    {
+                        if (count == flatIndex)
+                        {
+                            return (setIndex, diffIndex);
+                        }
+                        count++;
+                    }
+                }
+            }
+            
+            return (-1, -1); // Not found
+        }
+        
+        // Helper to convert from set/diff coordinates to flat index
+        private static int GetFlatIndexFromSetAndDiff(int setIndex, int diffIndex)
+        {
+            if (setIndex < 0 || setIndex >= _searchResults.Count ||
+                _searchResults[setIndex].Beatmaps == null ||
+                diffIndex < 0 || diffIndex >= _searchResults[setIndex].Beatmaps.Count)
+            {
+                return -1; // Invalid indices
+            }
+            
+            int flatIndex = 0;
+            
+            // Count all beatmaps in previous sets
+            for (int i = 0; i < setIndex; i++)
+            {
+                if (_searchResults[i].Beatmaps != null)
+                {
+                    flatIndex += _searchResults[i].Beatmaps.Count;
+                }
+            }
+            
+            // Add the diff index within the current set
+            flatIndex += diffIndex;
+            
+            return flatIndex;
         }
     }
 } 

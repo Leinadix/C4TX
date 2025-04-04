@@ -413,8 +413,9 @@ namespace C4TX.SDL.Engine
 
                 // Get the beatmap info before loading
                 BeatmapInfo? beatmapInfo = null;
+                BeatmapSet? beatmapSet = null;
 
-                // Try to find the corresponding beatmap info
+                // Try to find the corresponding beatmap info and its set
                 if (_availableBeatmapSets != null)
                 {
                     foreach (var set in _availableBeatmapSets)
@@ -423,6 +424,7 @@ namespace C4TX.SDL.Engine
                         if (info != null)
                         {
                             beatmapInfo = info;
+                            beatmapSet = set;
                             break;
                         }
                     }
@@ -454,11 +456,34 @@ namespace C4TX.SDL.Engine
                 // Store the map hash in the beatmap object
                 _currentBeatmap.MapHash = mapHash;
 
-                // If we found the beatmap info, ensure we use the same ID
+                // If we found the beatmap info, ensure we use the same ID and copy metadata from set
                 if (beatmapInfo != null)
                 {
                     if (!silent) Console.WriteLine($"Using beatmapInfo ID: {beatmapInfo.Id} for consistency");
                     _currentBeatmap.Id = beatmapInfo.Id;
+                    
+                    // Copy set metadata to current beatmap if empty in current beatmap
+                    if (beatmapSet != null)
+                    {
+                        // Copy Title, Artist, Creator from beatmapSet if empty in current beatmap
+                        if (string.IsNullOrEmpty(_currentBeatmap.Title) && !string.IsNullOrEmpty(beatmapSet.Title))
+                        {
+                            if (!silent) Console.WriteLine($"Copying title from beatmapSet: {beatmapSet.Title}");
+                            _currentBeatmap.Title = beatmapSet.Title;
+                        }
+                        
+                        if (string.IsNullOrEmpty(_currentBeatmap.Artist) && !string.IsNullOrEmpty(beatmapSet.Artist))
+                        {
+                            if (!silent) Console.WriteLine($"Copying artist from beatmapSet: {beatmapSet.Artist}");
+                            _currentBeatmap.Artist = beatmapSet.Artist;
+                        }
+                        
+                        if (string.IsNullOrEmpty(_currentBeatmap.Creator) && !string.IsNullOrEmpty(beatmapSet.Creator))
+                        {
+                            if (!silent) Console.WriteLine($"Copying creator from beatmapSet: {beatmapSet.Creator}");
+                            _currentBeatmap.Creator = beatmapSet.Creator;
+                        }
+                    }
                     
                     // Also ensure we copy the audio filename if present but missing in current beatmap
                     if (string.IsNullOrEmpty(_currentBeatmap.AudioFilename) && !string.IsNullOrEmpty(beatmapInfo.AudioFilename))
@@ -678,7 +703,7 @@ namespace C4TX.SDL.Engine
                     // Get the values from database
                     var dbValues = _beatmapService.DatabaseService.GetBeatmapDetails(selectedBeatmap.Id, selectedSet.Id);
                     
-                    Console.WriteLine($"Database values - BPM: {dbValues.BPM}, Length: {dbValues.Length}, Creator: {dbValues.Creator}");
+                    Console.WriteLine($"Database values - BPM: {dbValues.BPM}, Length: {dbValues.Length}, Creator: {dbValues.Creator}, Title: {dbValues.Title}, Artist: {dbValues.Artist}");
                     
                     // Cache the values for UI rendering
                     _cachedCreator = dbValues.Creator;
@@ -699,10 +724,43 @@ namespace C4TX.SDL.Engine
                         Console.WriteLine($"Updated BeatmapInfo Length to {selectedBeatmap.Length}");
                     }
                     
+                    // Update BeatmapInfo and BeatmapSet with creator info
                     if (!string.IsNullOrEmpty(dbValues.Creator))
                     {
+                        selectedBeatmap.Creator = dbValues.Creator;
                         selectedSet.Creator = dbValues.Creator;
-                        Console.WriteLine($"Updated BeatmapSet Creator to {selectedSet.Creator}");
+                        Console.WriteLine($"Updated BeatmapInfo and BeatmapSet Creator to {selectedSet.Creator}");
+                    }
+                    
+                    // Update BeatmapSet with metadata
+                    if (!string.IsNullOrEmpty(dbValues.Title))
+                    {
+                        selectedSet.Title = dbValues.Title;
+                        Console.WriteLine($"Updated BeatmapSet Title to {selectedSet.Title}");
+                    }
+                    
+                    if (!string.IsNullOrEmpty(dbValues.Artist))
+                    {
+                        selectedSet.Artist = dbValues.Artist;
+                        Console.WriteLine($"Updated BeatmapSet Artist to {selectedSet.Artist}");
+                    }
+                    
+                    if (!string.IsNullOrEmpty(dbValues.Source))
+                    {
+                        selectedSet.Source = dbValues.Source;
+                        Console.WriteLine($"Updated BeatmapSet Source to {selectedSet.Source}");
+                    }
+                    
+                    if (!string.IsNullOrEmpty(dbValues.Tags))
+                    {
+                        selectedSet.Tags = dbValues.Tags;
+                        Console.WriteLine($"Updated BeatmapSet Tags to {selectedSet.Tags}");
+                    }
+                    
+                    if (dbValues.PreviewTime > 0)
+                    {
+                        selectedSet.PreviewTime = dbValues.PreviewTime;
+                        Console.WriteLine($"Updated BeatmapSet PreviewTime to {selectedSet.PreviewTime}");
                     }
                     
                     // Update current beatmap if it matches
@@ -718,6 +776,25 @@ namespace C4TX.SDL.Engine
                         {
                             _currentBeatmap.Length = dbValues.Length;
                             Console.WriteLine($"Updated current beatmap Length to {_currentBeatmap.Length}");
+                        }
+                        
+                        if (!string.IsNullOrEmpty(dbValues.Creator))
+                        {
+                            _currentBeatmap.Creator = dbValues.Creator;
+                            Console.WriteLine($"Updated current beatmap Creator to {_currentBeatmap.Creator}");
+                        }
+                        
+                        // Copy additional metadata from the set to current beatmap if needed
+                        if (string.IsNullOrEmpty(_currentBeatmap.Title) && !string.IsNullOrEmpty(dbValues.Title))
+                        {
+                            _currentBeatmap.Title = dbValues.Title;
+                            Console.WriteLine($"Copied Title from set to current beatmap: {dbValues.Title}");
+                        }
+                        
+                        if (string.IsNullOrEmpty(_currentBeatmap.Artist) && !string.IsNullOrEmpty(dbValues.Artist))
+                        {
+                            _currentBeatmap.Artist = dbValues.Artist;
+                            Console.WriteLine($"Copied Artist from set to current beatmap: {dbValues.Artist}");
                         }
                     }
                 }

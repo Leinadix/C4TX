@@ -1993,6 +1993,7 @@ namespace C4TX.SDL.Engine
 
             // Constants for item heights and padding
             int itemHeight = 50; // Height for each beatmap
+            int headerHeight = 40; // Height for set group headers
 
             // Calculate the absolute boundaries of the visible area
             int viewAreaTop = y + 25; // Top of the visible area
@@ -2000,34 +2001,78 @@ namespace C4TX.SDL.Engine
             int viewAreaBottom = viewAreaTop + viewAreaHeight; // Bottom boundary
 
             // ---------------------------
-            // PHASE 1: Measure all content and create flat list of all beatmaps
+            // PHASE 1: Measure all content and create flat list of all beatmaps with headers
             // ---------------------------
 
             // First, calculate total content height and positions for all items
             int totalContentHeight = 0;
-            List<(int SetIndex, int DiffIndex, int StartY, int EndY)> itemPositions = new List<(int, int, int, int)>();
+            List<(int SetIndex, int DiffIndex, int StartY, int EndY, bool IsHeader)> itemPositions = new List<(int, int, int, int, bool)>();
             
             // Clear cached navigation items
             _cachedSongListItems.Clear();
 
-            // Create a flat list of all beatmaps
-            int totalBeatmaps = 0;
+            // Group the beatmaps by SetId
+            Dictionary<string, List<(int SetIndex, int DiffIndex)>> groupedBeatmaps = new Dictionary<string, List<(int SetIndex, int DiffIndex)>>();
+            
+            // First pass: collect all beatmaps by their SetId
             for (int i = 0; i < _availableBeatmapSets.Count; i++)
             {
+                var setId = _availableBeatmapSets[i].Id;
+                if (!groupedBeatmaps.ContainsKey(setId))
+                {
+                    groupedBeatmaps[setId] = new List<(int SetIndex, int DiffIndex)>();
+                }
+                
                 for (int j = 0; j < _availableBeatmapSets[i].Beatmaps.Count; j++)
+                {
+                    groupedBeatmaps[setId].Add((i, j));
+                }
+            }
+
+            // Create a flat list of all beatmaps with headers
+            int totalItems = 0;
+            int flatCounter = 0;
+            foreach (var groupEntry in groupedBeatmaps)
+            {
+                string setId = groupEntry.Key;
+                var beatmapsInGroup = groupEntry.Value;
+                
+                if (beatmapsInGroup.Count == 0)
+                    continue;
+                
+                // Get the set title for the header from the first beatmap in the group
+                var firstItem = beatmapsInGroup[0];
+                string setTitle = _availableBeatmapSets[firstItem.SetIndex].Title;
+                string setArtist = _availableBeatmapSets[firstItem.SetIndex].Artist;
+                
+                // Add header
+                int headerStartY = totalContentHeight;
+                int headerEndY = headerStartY + headerHeight;
+                itemPositions.Add((firstItem.SetIndex, -1, headerStartY, headerEndY, true)); // Use -1 for DiffIndex to indicate a header
+                
+                // Add header to navigation list (Type 0 = Header)
+                _cachedSongListItems.Add((flatCounter, 0));
+                
+                totalContentHeight += headerHeight;
+                totalItems++;
+                flatCounter++;
+                
+                // Add all beatmaps in this group
+                foreach (var beatmapInfo in beatmapsInGroup)
                 {
                     // Calculate position for this beatmap
                     int beatmapStartY = totalContentHeight;
                     int beatmapEndY = beatmapStartY + itemHeight;
                     
-                    // Add to positions list
-                    itemPositions.Add((i, j, beatmapStartY, beatmapEndY));
+                    // Add to positions list, false indicates it's not a header
+                    itemPositions.Add((beatmapInfo.SetIndex, beatmapInfo.DiffIndex, beatmapStartY, beatmapEndY, false));
                     
-                    // Add to navigation list (all are Type 1 = Selectable)
-                    _cachedSongListItems.Add((totalBeatmaps, 1));
+                    // Add to navigation list (Type 1 = Selectable beatmap)
+                    _cachedSongListItems.Add((flatCounter, 1));
                     
                     totalContentHeight += itemHeight;
-                    totalBeatmaps++;
+                    totalItems++;
+                    flatCounter++;
                 }
             }
 
@@ -2043,27 +2088,16 @@ namespace C4TX.SDL.Engine
             if (_selectedSongIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count &&
                 _selectedDifficultyIndex >= 0 && _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
             {
-                // Convert from (set, diff) coordinates to flat index
-                int counter = 0;
-                for (int i = 0; i < _availableBeatmapSets.Count; i++)
+                // Find the item position for the selected beatmap
+                for (int i = 0; i < itemPositions.Count; i++)
                 {
-                    for (int j = 0; j < _availableBeatmapSets[i].Beatmaps.Count; j++)
+                    var item = itemPositions[i];
+                    if (!item.IsHeader && item.SetIndex == _selectedSongIndex && item.DiffIndex == _selectedDifficultyIndex)
                     {
-                        if (i == _selectedSongIndex && j == _selectedDifficultyIndex)
-                        {
-                            flatSelectedIndex = counter;
-                            break;
-                        }
-                        counter++;
-                    }
-                    if (flatSelectedIndex >= 0)
+                        flatSelectedIndex = i;
+                        selectedItemY = item.StartY;
                         break;
-                }
-
-                // If we found the selected beatmap, get its position
-                if (flatSelectedIndex >= 0 && flatSelectedIndex < itemPositions.Count)
-                {
-                    selectedItemY = itemPositions[flatSelectedIndex].StartY;
+                    }
                 }
             }
 
@@ -2081,50 +2115,74 @@ namespace C4TX.SDL.Engine
             // PHASE 3: Render items
             // ---------------------------
 
-            // Draw each beatmap
-            int beatmapIndex = 0;
-            foreach (var item in itemPositions)
+            // Draw each item (header or beatmap)
+            for (int i = 0; i < itemPositions.Count; i++)
             {
+                var item = itemPositions[i];
+                
                 // Calculate the actual screen Y position after applying scroll
                 int screenY = viewAreaTop + item.StartY - scrollOffset;
-
-                // Check if this is the selected beatmap
-                bool isSelected = (item.SetIndex == _selectedSongIndex && item.DiffIndex == _selectedDifficultyIndex);
-
+                
                 // Skip items completely outside the view area (with some buffer)
-                if (screenY + itemHeight < viewAreaTop - 50 || screenY > viewAreaBottom + 50)
+                if ((item.IsHeader && screenY + headerHeight < viewAreaTop - 50) || 
+                    (!item.IsHeader && screenY + itemHeight < viewAreaTop - 50) || 
+                    screenY > viewAreaBottom + 50)
                 {
-                    beatmapIndex++;
                     continue;
                 }
-
-                // Get the current beatmap and its set
-                var beatmapSet = _availableBeatmapSets[item.SetIndex];
-                var beatmap = beatmapSet.Beatmaps[item.DiffIndex];
-
-                // Draw beatmap background
-                SDL_Color bgColor = isSelected ? Color._primaryColor : Color._panelBgColor;
-                SDL_Color textColor = isSelected ? Color._textColor : Color._mutedTextColor;
-
-                // Calculate proper panel height for better alignment
-                int actualItemHeight = itemHeight - 5;
-                DrawPanel(x + 5, screenY, width - 10, actualItemHeight, bgColor, isSelected ? Color._accentColor : Color._panelBgColor, isSelected ? 2 : 0);
-
-                // Create display text combining artist, title and difficulty
-                string beatmapTitle = $"{beatmapSet.Artist} - {beatmapSet.Title} [{beatmap.Difficulty}]";
-                if (beatmapTitle.Length > 40) beatmapTitle = beatmapTitle.Substring(0, 38) + "...";
-
-                // Render beatmap text
-                RenderText(beatmapTitle, x + 20, screenY + actualItemHeight / 2 - 3, textColor, false, false);
-
-                // Show star rating if available
-                if (beatmap.CachedDifficultyRating.HasValue && beatmap.CachedDifficultyRating.Value > 0)
+                
+                if (item.IsHeader)
                 {
-                    string difficultyText = $"{beatmap.CachedDifficultyRating.Value:F2}★";
-                    RenderText(difficultyText, x + width - 50, screenY + actualItemHeight / 2 - 3, textColor, false, true);
+                    // Draw header
+                    var setInfo = _availableBeatmapSets[item.SetIndex];
+                    string headerText = $"{setInfo.Artist} - {setInfo.Title}";
+                    
+                    // Draw header background
+                    SDL_Color headerBgColor = new SDL_Color { r = 40, g = 40, b = 70, a = 255 };
+                    SDL_Color headerTextColor = new SDL_Color { r = 220, g = 220, b = 255, a = 255 };
+                    
+                    // Calculate proper panel height for better alignment
+                    int actualHeaderHeight = headerHeight - 5;
+                    DrawPanel(x + 5, screenY, width - 10, actualHeaderHeight, headerBgColor, headerBgColor, 0);
+                    
+                    // Truncate header text if too long
+                    if (headerText.Length > 40) headerText = headerText.Substring(0, 38) + "...";
+                    
+                    // Render the header text
+                    RenderText(headerText, x + 20, screenY + actualHeaderHeight / 2, headerTextColor, false, false, true);
                 }
-
-                beatmapIndex++;
+                else
+                {
+                    // Draw beatmap
+                    // Check if this is the selected beatmap
+                    bool isSelected = (item.SetIndex == _selectedSongIndex && item.DiffIndex == _selectedDifficultyIndex);
+                    
+                    // Get the current beatmap and its set
+                    var beatmapSet = _availableBeatmapSets[item.SetIndex];
+                    var beatmap = beatmapSet.Beatmaps[item.DiffIndex];
+                    
+                    // Draw beatmap background
+                    SDL_Color bgColor = isSelected ? Color._primaryColor : Color._panelBgColor;
+                    SDL_Color textColor = isSelected ? Color._textColor : Color._mutedTextColor;
+                    
+                    // Calculate proper panel height for better alignment
+                    int actualItemHeight = itemHeight - 5;
+                    DrawPanel(x + 20, screenY, width - 25, actualItemHeight, bgColor, isSelected ? Color._accentColor : Color._panelBgColor, isSelected ? 2 : 0);
+                    
+                    // Create display text showing just the difficulty (since we already show artist/title in header)
+                    string beatmapTitle = $"{beatmap.Difficulty}";
+                    if (beatmapTitle.Length > 30) beatmapTitle = beatmapTitle.Substring(0, 28) + "...";
+                    
+                    // Render beatmap text
+                    RenderText(beatmapTitle, x + 35, screenY + actualItemHeight / 2, textColor, false, false);
+                    
+                    // Show star rating if available
+                    if (beatmap.CachedDifficultyRating.HasValue && beatmap.CachedDifficultyRating.Value > 0)
+                    {
+                        string difficultyText = $"{beatmap.CachedDifficultyRating.Value:F2}★";
+                        RenderText(difficultyText, x + width - 50, screenY + actualItemHeight / 2, textColor, false, true);
+                    }
+                }
             }
         }
 
@@ -2135,9 +2193,17 @@ namespace C4TX.SDL.Engine
             DrawPanel(x, y, width, height, new SDL_Color { r = 25, g = 25, b = 45, a = 255 }, Color._primaryColor);
 
             // If no beatmaps or selection is invalid, display message
-            if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0 || _selectedSongIndex < 0 || _selectedSongIndex >= _availableBeatmapSets.Count)
+            if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0 || _selectedSongIndex < 0 || 
+                (GameEngine._isSearching == false && _selectedSongIndex >= _availableBeatmapSets.Count))
             {
                 RenderText("No beatmap selected", x + width / 2, y + height / 2, Color._mutedTextColor, false, true);
+                return;
+            }
+
+            // If in search mode and we have a loaded beatmap, display its details directly
+            if (GameEngine._isSearching && GameEngine._showSearchResults && GameEngine._currentBeatmap != null)
+            {
+                DisplayCurrentBeatmapDetails(x, y, width, height);
                 return;
             }
 
@@ -2209,53 +2275,7 @@ namespace C4TX.SDL.Engine
             // Draw the background if it was loaded successfully
             if (backgroundTexture != IntPtr.Zero)
             {
-                // Get texture dimensions
-                SDL_QueryTexture(backgroundTexture, out _, out _, out int imgWidth, out int imgHeight);
-                
-                // Calculate aspect ratio to maintain proportions
-                float imgAspect = (float)imgWidth / imgHeight;
-                float panelAspect = (float)width / height;
-                
-                SDL_Rect destRect;
-                if (imgAspect > panelAspect)
-                {
-                    // Image is wider than panel
-                    int scaledHeight = (int)(width / imgAspect);
-                    destRect = new SDL_Rect
-                    {
-                        x = x,
-                        y = y + (height - scaledHeight) / 2,
-                        w = width,
-                        h = scaledHeight
-                    };
-                }
-                else
-                {
-                    // Image is taller than panel
-                    int scaledWidth = (int)(height * imgAspect);
-                    destRect = new SDL_Rect
-                    {
-                        x = x + (width - scaledWidth) / 2,
-                        y = y,
-                        w = scaledWidth,
-                        h = height
-                    };
-                }
-                
-                // Draw the background image
-                SDL_RenderCopy(_renderer, backgroundTexture, IntPtr.Zero, ref destRect);
-                
-                // Add a semi-transparent dark overlay for better text readability
-                SDL_Rect overlayRect = new SDL_Rect
-                {
-                    x = x,
-                    y = y,
-                    w = width,
-                    h = height
-                };
-                
-                SDL_SetRenderDrawColor(_renderer, 0, 0, 0, 180);
-                SDL_RenderFillRect(_renderer, ref overlayRect);
+                DrawBackgroundImage(backgroundTexture, x, y, width, height);
             }
 
             var currentBeatmap = selectedSet.Beatmaps[_selectedDifficultyIndex];
@@ -2316,17 +2336,17 @@ namespace C4TX.SDL.Engine
             int creatorY = artistY + 30;
             string creatorText = "Mapped by " + (string.IsNullOrEmpty(creatorName) ? "Unknown" : creatorName);
             RenderText(creatorText, x + width / 2, creatorY, Color._textColor, false, true, true);
-
+            
             // Draw length with rate applied
             int lengthY = creatorY + 30;
-            string lengthText = lengthValue > 0 ? MillisToTime(lengthValue / _currentRate).ToString() : "--:--";
+            string lengthText = lengthValue > 0 ? MillisToTime(lengthValue / GameEngine._currentRate).ToString() : "--:--";
             RenderText(lengthText, x + width / 2, lengthY, Color._textColor, false, true, true);
-
+            
             // Draw BPM with rate applied
             int rateY = lengthY + 30;
-            string bpmText = bpmValue > 0 ? (bpmValue * _currentRate).ToString("F2") + " BPM" : "--- BPM";
+            string bpmText = bpmValue > 0 ? (bpmValue * GameEngine._currentRate).ToString("F2") + " BPM" : "--- BPM";
             RenderText(bpmText, x + width / 2, rateY, Color._textColor, false, true, true);
-
+            
             // Draw difficulty rating
             int diffY = rateY + 30;
             double difficultyRating = 0;
@@ -2334,12 +2354,12 @@ namespace C4TX.SDL.Engine
             if (currentBeatmap.CachedDifficultyRating.HasValue)
             {
                 // Check if we need to calculate with current rate
-                if (Math.Abs(currentBeatmap.LastCachedRate - _currentRate) > 0.01) // Small threshold for float comparison
+                if (Math.Abs(currentBeatmap.LastCachedRate - GameEngine._currentRate) > 0.01) // Small threshold for float comparison
                 {
                     // Recalculate for current rate if not already done
                     if (_currentBeatmap != null)
                     {
-                        difficultyRating = GameEngine._difficultyRatingService.CalculateDifficulty(_currentBeatmap, _currentRate);
+                        difficultyRating = GameEngine._difficultyRatingService.CalculateDifficulty(_currentBeatmap, GameEngine._currentRate);
                     }
                     else
                     {
@@ -2360,6 +2380,126 @@ namespace C4TX.SDL.Engine
             {
                 RenderText("No difficulty rating", x + width / 2, diffY, Color._mutedTextColor, false, true, true);
             }
+        }
+        
+        // Helper method to display details for the currently loaded beatmap (used in search mode)
+        private static void DisplayCurrentBeatmapDetails(int x, int y, int width, int height)
+        {
+            // Draw background image if available
+            IntPtr searchBackgroundTexture = IntPtr.Zero;
+            
+            // Get the background from the currently loaded beatmap
+            if (GameEngine._currentBeatmap != null && !string.IsNullOrEmpty(GameEngine._currentBeatmap.BackgroundFilename))
+            {
+                string beatmapDir = Path.GetDirectoryName(AudioEngine._currentAudioPath) ?? string.Empty;
+                
+                if (!string.IsNullOrEmpty(beatmapDir))
+                {
+                    // If we haven't loaded this background yet, or it's a different one
+                    string cacheKey = $"{beatmapDir}_{GameEngine._currentBeatmap.BackgroundFilename}";
+                    if (_lastLoadedBackgroundKey != cacheKey || _currentMenuBackgroundTexture == IntPtr.Zero)
+                    {
+                        // Load the background image from the beatmap directory
+                        _currentMenuBackgroundTexture = LoadBackgroundTexture(beatmapDir, GameEngine._currentBeatmap.BackgroundFilename);
+                        _lastLoadedBackgroundKey = cacheKey;
+                    }
+                    
+                    searchBackgroundTexture = _currentMenuBackgroundTexture;
+                }
+            }
+            
+            // Draw the background if it was loaded successfully
+            if (searchBackgroundTexture != IntPtr.Zero)
+            {
+                DrawBackgroundImage(searchBackgroundTexture, x, y, width, height);
+            }
+            
+            // Draw beatmap title and difficulty
+            int searchTitleY = y + 30;
+            string searchFullTitle = $"{GameEngine._currentBeatmap.Version}";
+            RenderText(searchFullTitle, x + width / 2, searchTitleY, Color._highlightColor, false, true, true);
+
+            // Draw artist - title
+            int searchArtistY = searchTitleY + 30;
+            RenderText(GameEngine._currentBeatmap.Artist + " - " + GameEngine._currentBeatmap.Title, x + width / 2, searchArtistY, Color._textColor, false, true, true);
+            
+            // Draw mapper information
+            int searchCreatorY = searchArtistY + 30;
+            string searchCreatorText = "Mapped by " + (string.IsNullOrEmpty(GameEngine._currentBeatmap.Creator) ? "Unknown" : GameEngine._currentBeatmap.Creator);
+            RenderText(searchCreatorText, x + width / 2, searchCreatorY, Color._textColor, false, true, true);
+            
+            // Draw length with rate applied
+            int searchLengthY = searchCreatorY + 30;
+            string searchLengthText = GameEngine._currentBeatmap.Length > 0 ? 
+                MillisToTime(GameEngine._currentBeatmap.Length / GameEngine._currentRate).ToString() : "--:--";
+            RenderText(searchLengthText, x + width / 2, searchLengthY, Color._textColor, false, true, true);
+            
+            // Draw BPM with rate applied
+            int searchRateY = searchLengthY + 30;
+            string searchBpmText = GameEngine._currentBeatmap.BPM > 0 ? 
+                (GameEngine._currentBeatmap.BPM * GameEngine._currentRate).ToString("F2") + " BPM" : "--- BPM";
+            RenderText(searchBpmText, x + width / 2, searchRateY, Color._textColor, false, true, true);
+            
+            // Draw difficulty information
+            if (GameEngine._difficultyRatingService != null && GameEngine._currentBeatmap != null)
+            {
+                int searchDiffY = searchRateY + 30;
+                double currentRating = GameEngine._difficultyRatingService.CalculateDifficulty(GameEngine._currentBeatmap, GameEngine._currentRate);
+                string searchDiffText = $"{currentRating:F2}★ ({GameEngine._currentRate:F2}x)";
+                RenderText(searchDiffText, x + width / 2, searchDiffY, Color._highlightColor, false, true);
+            }
+        }
+        
+        // Helper method to draw a background image with proper scaling
+        private static void DrawBackgroundImage(IntPtr backgroundTexture, int x, int y, int width, int height)
+        {
+            // Get texture dimensions
+            SDL_QueryTexture(backgroundTexture, out _, out _, out int imgWidth, out int imgHeight);
+            
+            // Calculate aspect ratio to maintain proportions
+            float imgAspect = (float)imgWidth / imgHeight;
+            float panelAspect = (float)width / height;
+            
+            SDL_Rect destRect;
+            if (imgAspect > panelAspect)
+            {
+                // Image is wider than panel
+                int scaledHeight = (int)(width / imgAspect);
+                destRect = new SDL_Rect
+                {
+                    x = x,
+                    y = y + (height - scaledHeight) / 2,
+                    w = width,
+                    h = scaledHeight
+                };
+            }
+            else
+            {
+                // Image is taller than panel
+                int scaledWidth = (int)(height * imgAspect);
+                destRect = new SDL_Rect
+                {
+                    x = x + (width - scaledWidth) / 2,
+                    y = y,
+                    w = scaledWidth,
+                    h = height
+                };
+            }
+            
+            // Draw the background image
+            SDL_RenderCopy(_renderer, backgroundTexture, IntPtr.Zero, ref destRect);
+            
+            // Add a semi-transparent dark overlay for better text readability
+            SDL_Rect overlayRect = new SDL_Rect
+            {
+                x = x,
+                y = y,
+                w = width,
+                h = height
+            };
+            
+            SDL_SetRenderDrawColor(_renderer, 0, 0, 0, 180);
+            SDL_RenderFillRect(_renderer, ref overlayRect);
         }
 
         public static string MillisToTime(double millis)
@@ -3549,50 +3689,58 @@ namespace C4TX.SDL.Engine
                     
                     // Constants for item heights and padding
                     int itemHeight = 50; // Height for each beatmap
+                    int headerHeight = 40; // Height for mapset headers
                     
                     // Calculate the absolute boundaries of the visible area
-                    int viewAreaTop = resultsY + 30; // Top of the visible area
+                    int viewAreaTop = resultsY + 50; 
                     int viewAreaHeight = height - (viewAreaTop - y) - 10; // Height of the visible area
                     int viewAreaBottom = viewAreaTop + viewAreaHeight; // Bottom boundary
                     
-                    // Calculate total content height
-                    int totalContentHeight = resultsCount * itemHeight;
+                    // Calculate the flat index positions with headers
+                    List<(int SetIndex, int DiffIndex, int StartY, int Height, bool IsHeader)> itemPositions = new List<(int, int, int, int, bool)>();
+                    int totalContentHeight = 0;
                     
-                    // Create a flat list of all beatmaps in search results
-                    List<(BeatmapSet Set, BeatmapInfo Beatmap, int Index)> flatBeatmaps = new List<(BeatmapSet, BeatmapInfo, int)>();
-                    int flatIndex = 0;
-                    
-                    try 
+                    // Create a flat representation with headers for each set
+                    for (int setIndex = 0; setIndex < GameEngine._searchResults.Count; setIndex++)
                     {
-                        foreach (var set in GameEngine._searchResults)
+                        var set = GameEngine._searchResults[setIndex];
+                        
+                        if (set.Beatmaps == null || set.Beatmaps.Count == 0)
+                            continue;
+                            
+                        // Add a header for this set
+                        itemPositions.Add((setIndex, -1, totalContentHeight, headerHeight, true));
+                        totalContentHeight += headerHeight;
+                        
+                        // Add all beatmaps in this set
+                        for (int diffIndex = 0; diffIndex < set.Beatmaps.Count; diffIndex++)
                         {
-                            if (set.Beatmaps != null)
-                            {
-                                foreach (var beatmap in set.Beatmaps)
-                                {
-                                    if (beatmap != null)
-                                    {
-                                        flatBeatmaps.Add((set, beatmap, flatIndex));
-                                        flatIndex++;
-                                    }
-                                }
-                            }
+                            itemPositions.Add((setIndex, diffIndex, totalContentHeight, itemHeight, false));
+                            totalContentHeight += itemHeight;
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error creating flat beatmap list: {ex.Message}");
                     }
                     
                     // Calculate max possible scroll
                     int maxScroll = Math.Max(0, totalContentHeight - viewAreaHeight);
                     
-                    // Find the currently selected beatmap
+                    // Find the currently selected beatmap in flat representation
                     int selectedItemY = 0;
                     
-                    if (GameEngine._selectedSongIndex >= 0 && GameEngine._selectedSongIndex < flatBeatmaps.Count)
+                    // Get the set and diff index from flat index
+                    var setDiffPosition = SearchKeyhandler.GetSetAndDiffFromFlatIndex(GameEngine._selectedSongIndex);
+                    
+                    if (setDiffPosition.SetIndex >= 0 && setDiffPosition.DiffIndex >= 0)
                     {
-                        selectedItemY = GameEngine._selectedSongIndex * itemHeight;
+                        // Find the corresponding position in our itemPositions list
+                        for (int i = 0; i < itemPositions.Count; i++)
+                        {
+                            var item = itemPositions[i];
+                            if (!item.IsHeader && item.SetIndex == setDiffPosition.SetIndex && item.DiffIndex == setDiffPosition.DiffIndex)
+                            {
+                                selectedItemY = item.StartY;
+                                break;
+                            }
+                        }
                     }
                     
                     // Center the selected item in the view
@@ -3602,57 +3750,78 @@ namespace C4TX.SDL.Engine
                     // Final scroll offset
                     int scrollOffset = targetScrollPos;
                     
-                    // Draw each beatmap in the search results
-                    for (int i = 0; i < flatBeatmaps.Count; i++)
+                    // Draw each item (header or beatmap)
+                    for (int i = 0; i < itemPositions.Count; i++)
                     {
-                        var item = flatBeatmaps[i];
+                        var item = itemPositions[i];
                         
                         // Calculate the actual screen Y position after applying scroll
-                        int screenY = viewAreaTop + (i * itemHeight) - scrollOffset;
+                        int screenY = viewAreaTop + item.StartY - scrollOffset;
                         
                         // Skip items completely outside the view area
-                        if (screenY + itemHeight < viewAreaTop - 50 || screenY > viewAreaBottom + 50)
+                        if (screenY + item.Height < viewAreaTop - 50 || screenY > viewAreaBottom + 50)
                         {
                             continue;
                         }
                         
-                        // Check if this is the selected beatmap
-                        bool isSelected = (i == GameEngine._selectedSongIndex);
-                        
-                        // Draw beatmap background
-                        SDL_Color bgColor = isSelected ? Color._primaryColor : Color._panelBgColor;
-                        SDL_Color textColor = isSelected ? Color._textColor : Color._mutedTextColor;
-                        
-                        // Calculate proper panel height for better alignment
-                        int actualItemHeight = itemHeight - 5;
-                        DrawPanel(x + 5, screenY, width - 10, actualItemHeight, bgColor, isSelected ? Color._accentColor : Color._panelBgColor, isSelected ? 2 : 0);
-                        
-                        // Create display text combining artist, title and difficulty
-                        string beatmapTitle = $"{item.Set.Artist} - {item.Set.Title} [{item.Beatmap.Difficulty}]";
-                        if (beatmapTitle.Length > 40) beatmapTitle = beatmapTitle.Substring(0, 38) + "...";
-                        
-                        // Render beatmap text
-                        RenderText(beatmapTitle, x + 20, screenY + actualItemHeight / 2 - 3, textColor, false, false);
-                        
-                        // Show star rating if available
-                        if (item.Beatmap.CachedDifficultyRating.HasValue && item.Beatmap.CachedDifficultyRating.Value > 0)
+                        if (item.IsHeader)
                         {
-                            string difficultyText = $"{item.Beatmap.CachedDifficultyRating.Value:F2}★";
-                            RenderText(difficultyText, x + width - 50, screenY + actualItemHeight / 2 - 3, textColor, false, true);
+                            // Draw header
+                            var setInfo = GameEngine._searchResults[item.SetIndex];
+                            string headerText = $"{setInfo.Artist} - {setInfo.Title}";
+                            
+                            // Draw header background
+                            SDL_Color headerBgColor = new SDL_Color { r = 40, g = 40, b = 70, a = 255 };
+                            SDL_Color headerTextColor = new SDL_Color { r = 220, g = 220, b = 255, a = 255 };
+                            
+                            // Calculate proper panel height for better alignment
+                            int actualHeaderHeight = headerHeight - 5;
+                            DrawPanel(x + 5, screenY, width - 10, actualHeaderHeight, headerBgColor, headerBgColor, 0);
+                            
+                            // Truncate header text if too long
+                            if (headerText.Length > 40) headerText = headerText.Substring(0, 38) + "...";
+                            
+                            // Draw header text
+                            RenderText(headerText, x + 20, screenY + actualHeaderHeight / 2, headerTextColor, false, false);
+                        }
+                        else
+                        {
+                            // Draw beatmap item
+                            var set = GameEngine._searchResults[item.SetIndex];
+                            var beatmap = set.Beatmaps[item.DiffIndex];
+                            
+                            // Check if this is the currently selected beatmap
+                            bool isSelected = (setDiffPosition.SetIndex == item.SetIndex && setDiffPosition.DiffIndex == item.DiffIndex);
+                            
+                            // Draw beatmap background
+                            SDL_Color bgColor = isSelected ? Color._primaryColor : Color._panelBgColor;
+                            SDL_Color textColor = isSelected ? Color._textColor : Color._mutedTextColor;
+                            
+                            // Calculate proper panel height for better alignment
+                            int actualItemHeight = itemHeight - 5;
+                            DrawPanel(x + 20, screenY, width - 25, actualItemHeight, bgColor, isSelected ? Color._accentColor : Color._panelBgColor, isSelected ? 2 : 0);
+                            
+                            // Create display text for difficulty
+                            string difficultyText = $"[{beatmap.Difficulty}]";
+                            if (difficultyText.Length > 15) difficultyText = difficultyText.Substring(0, 13) + "...]";
+                            
+                            // Render difficulty name
+                            RenderText(difficultyText, x + 35, screenY + actualItemHeight / 2, textColor, false, false);
+                            
+                            // Show star rating if available
+                            if (beatmap.CachedDifficultyRating.HasValue && beatmap.CachedDifficultyRating.Value > 0)
+                            {
+                                string starRatingText = $"{beatmap.CachedDifficultyRating.Value:F2}★";
+                                RenderText(starRatingText, x + width - 50, screenY + actualItemHeight / 2, textColor, false, true);
+                            }
                         }
                     }
                 }
                 else
                 {
                     // No results found
-                    RenderText("No results found", x + width / 2, resultsY + 30, Color._mutedTextColor, false, true);
+                    RenderText("No matching beatmaps found", x + width / 2, resultsY + 40, Color._errorColor, false, true);
                 }
-            }
-            else if (!string.IsNullOrEmpty(GameEngine._searchQuery))
-            {
-                // Display message when search is initiated but hasn't run yet
-                int resultsY = inputFieldY + 70;
-                RenderText("Press Enter to search", x + width / 2, resultsY + 30, Color._mutedTextColor, false, true);
             }
         }
     }
