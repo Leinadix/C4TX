@@ -46,33 +46,114 @@ namespace C4TX.SDL.Engine
         {
             try
             {
-                // Check if we have a beatmap and an audio file
-                if (GameEngine._currentBeatmap == null || string.IsNullOrEmpty(GameEngine._currentBeatmap.AudioFilename))
+                // Check if we have a beatmap 
+                if (GameEngine._currentBeatmap == null)
                 {
-                    if (!silent) Console.WriteLine("No audio file specified in beatmap");
+                    if (!silent) Console.WriteLine("[AUDIO DEBUG] No current beatmap");
+                    return;
+                }
+                
+                // Check if we have an audio path set (either directly or through beatmap)
+                if (string.IsNullOrEmpty(_currentAudioPath) && string.IsNullOrEmpty(GameEngine._currentBeatmap.AudioFilename))
+                {
+                    if (!silent) Console.WriteLine("[AUDIO DEBUG] No audio file specified in beatmap and no current audio path");
                     return;
                 }
 
-                // Get the directory of the beatmap file and find the audio file
-                string? beatmapDir = null;
-                var beatmapInfo = BeatmapEngine.GetSelectedBeatmapInfo();
-                if (beatmapInfo != null)
+                // First priority: Use the existing audio path if it's valid
+                string? audioPath = null;
+                
+                if (!string.IsNullOrEmpty(_currentAudioPath))
                 {
-                    beatmapDir = Path.GetDirectoryName(beatmapInfo.Path);
+                    // Try to use the existing path, but verify the file exists
+                    if (File.Exists(_currentAudioPath))
+                    {
+                        audioPath = _currentAudioPath;
+                        if (!silent) Console.WriteLine($"[AUDIO DEBUG] Using existing audio path: {audioPath}");
+                    }
+                    else
+                    {
+                        if (!silent) Console.WriteLine($"[AUDIO DEBUG] Existing audio path is invalid: {_currentAudioPath}");
+                    }
+                }
+                
+                // Second priority: Try to build the path from the current beatmap's AudioFilename
+                if (audioPath == null && !string.IsNullOrEmpty(GameEngine._currentBeatmap.AudioFilename))
+                {
+                    // Get the directory from either the beatmap info or available beatmap sets
+                    string? beatmapDir = null;
+                    var beatmapInfo = BeatmapEngine.GetSelectedBeatmapInfo();
+                    
+                    if (beatmapInfo != null)
+                    {
+                        beatmapDir = Path.GetDirectoryName(beatmapInfo.Path);
+                        if (!silent) Console.WriteLine($"[AUDIO DEBUG] Got beatmap directory from beatmapInfo: {beatmapDir}");
+                    }
+                    
+                    // If we couldn't get the directory from beatmap info, try from the beatmap sets
+                    if (string.IsNullOrEmpty(beatmapDir))
+                    {
+                        if (GameEngine._availableBeatmapSets != null && GameEngine._availableBeatmapSets.Count > 0)
+                        {
+                            foreach (var set in GameEngine._availableBeatmapSets)
+                            {
+                                foreach (var mapInfo in set.Beatmaps)
+                                {
+                                    if (mapInfo.Id == GameEngine._currentBeatmap.Id)
+                                    {
+                                        beatmapDir = Path.GetDirectoryName(mapInfo.Path);
+                                        if (!silent) Console.WriteLine($"[AUDIO DEBUG] Found matching beatmap directory: {beatmapDir}");
+                                        break;
+                                    }
+                                }
+                                if (!string.IsNullOrEmpty(beatmapDir)) break;
+                            }
+                        }
+                    }
+                    
+                    // If we still don't have a directory, use a fallback approach
+                    if (string.IsNullOrEmpty(beatmapDir))
+                    {
+                        if (GameEngine._availableBeatmapSets != null && GameEngine._availableBeatmapSets.Count > 0 && 
+                            GameEngine._availableBeatmapSets[0].Beatmaps.Count > 0)
+                        {
+                            string oneBeatmapPath = GameEngine._availableBeatmapSets[0].Beatmaps[0].Path;
+                            beatmapDir = Path.GetDirectoryName(oneBeatmapPath);
+                            if (!silent) Console.WriteLine($"[AUDIO DEBUG] Used fallback beatmap directory: {beatmapDir}");
+                        }
+                    }
+
+                    // If we found a valid directory, build the audio path
+                    if (!string.IsNullOrEmpty(beatmapDir))
+                    {
+                        string candidatePath = Path.Combine(beatmapDir, GameEngine._currentBeatmap.AudioFilename);
+                        if (File.Exists(candidatePath))
+                        {
+                            audioPath = Path.GetFullPath(candidatePath); // Make it absolute
+                            _currentAudioPath = audioPath; // Store it for future use
+                            if (!silent) Console.WriteLine($"[AUDIO DEBUG] Built valid audio path: {audioPath}");
+                        }
+                        else
+                        {
+                            if (!silent) Console.WriteLine($"[AUDIO DEBUG] Built audio path doesn't exist: {candidatePath}");
+                        }
+                    }
+                    else
+                    {
+                        if (!silent) Console.WriteLine("[AUDIO DEBUG] Could not determine any beatmap directory");
+                    }
                 }
 
-                if (string.IsNullOrEmpty(beatmapDir))
+                // Verify we have a valid audio path
+                if (string.IsNullOrEmpty(audioPath))
                 {
-                    if (!silent) Console.WriteLine("Could not determine beatmap directory");
+                    if (!silent) Console.WriteLine("[AUDIO DEBUG] Failed to determine any valid audio path");
                     return;
                 }
-
-                string audioPath = Path.Combine(beatmapDir, GameEngine._currentBeatmap.AudioFilename);
-                _currentAudioPath = audioPath;
 
                 if (!File.Exists(audioPath))
                 {
-                    if (!silent) Console.WriteLine($"Audio file not found: {audioPath}");
+                    if (!silent) Console.WriteLine($"[AUDIO DEBUG] Final audio path not found: {audioPath}");
                     return;
                 }
 
@@ -84,48 +165,108 @@ namespace C4TX.SDL.Engine
                 {
                     Bass.StreamFree(_mixerStream);
                     _mixerStream = 0;
+                    if (!silent) Console.WriteLine("[AUDIO DEBUG] Freed existing mixer stream");
                 }
 
                 if (_audioStream != 0)
                 {
                     Bass.StreamFree(_audioStream);
                     _audioStream = 0;
+                    if (!silent) Console.WriteLine("[AUDIO DEBUG] Freed existing audio stream");
                 }
 
-                // Create the stream with appropriate flags
-                _audioStream = Bass.CreateStream(audioPath, 0, 0, BassFlags.Decode);
-
-                if (_audioStream == 0)
+                // Print diagnostic info
+                if (!silent) Console.WriteLine($"[AUDIO DEBUG] Creating audio stream from: {audioPath}");
+                
+                try
                 {
-                    if (!silent) Console.WriteLine($"Failed to create audio stream: {Bass.LastError}");
-                    return;
+                    // Try to create the stream with detailed error reporting
+                    _audioStream = Bass.CreateStream(audioPath, 0, 0, BassFlags.Decode);
+                    
+                    if (_audioStream == 0)
+                    {
+                        Errors bassError = Bass.LastError;
+                        if (!silent) 
+                        {
+                            Console.WriteLine($"[AUDIO DEBUG] Failed to create audio stream. Error code: {bassError}");
+                            Console.WriteLine($"[AUDIO DEBUG] Error description: {GetBassErrorDescription(bassError)}");
+                        }
+                        return;
+                    }
+                    
+                    if (!silent) Console.WriteLine($"[AUDIO DEBUG] Successfully created audio stream: {_audioStream}");
+                    
+                    // Create tempo stream with BassFx
+                    _mixerStream = BassFx.TempoCreate(_audioStream, BassFlags.FxFreeSource);
+                    
+                    if (_mixerStream == 0)
+                    {
+                        Errors bassError = Bass.LastError;
+                        if (!silent) 
+                        {
+                            Console.WriteLine($"[AUDIO DEBUG] Failed to create tempo stream. Error code: {bassError}");
+                            Console.WriteLine($"[AUDIO DEBUG] Error description: {GetBassErrorDescription(bassError)}");
+                        }
+                        Bass.StreamFree(_audioStream);
+                        _audioStream = 0;
+                        return;
+                    }
+                    
+                    if (!silent) Console.WriteLine($"[AUDIO DEBUG] Successfully created mixer stream: {_mixerStream}");
+                    
+                    // Set initial volume
+                    Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Volume, _volume);
+                    
+                    // Set the playback rate using tempo attributes
+                    Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Tempo, (GameEngine._currentRate - 1.0f) * 100);
+                    
+                    _audioLoaded = true;
+                    
+                    if (!silent) Console.WriteLine($"[AUDIO DEBUG] Audio loaded successfully: {audioPath}");
                 }
-
-                // Create tempo stream with BassFx
-                _mixerStream = BassFx.TempoCreate(_audioStream, BassFlags.FxFreeSource);
-
-                if (_mixerStream == 0)
+                catch (Exception ex)
                 {
-                    if (!silent) Console.WriteLine($"Failed to create tempo stream: {Bass.LastError}");
-                    Bass.StreamFree(_audioStream);
-                    _audioStream = 0;
-                    return;
+                    if (!silent) 
+                    {
+                        Console.WriteLine($"[AUDIO DEBUG] Exception while creating audio stream: {ex.Message}");
+                        Console.WriteLine($"[AUDIO DEBUG] Stack trace: {ex.StackTrace}");
+                    }
+                    _audioLoaded = false;
                 }
-
-                // Set initial volume
-                Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Volume, _volume);
-
-                // Set the playback rate using tempo attributes
-                Bass.ChannelSetAttribute(_mixerStream, ChannelAttribute.Tempo, (GameEngine._currentRate - 1.0f) * 100);
-
-                _audioLoaded = true;
-
-                if (!silent) Console.WriteLine($"Audio loaded: {audioPath}");
             }
             catch (Exception ex)
             {
-                if (!silent) Console.WriteLine($"Error loading audio: {ex.Message}");
+                if (!silent) 
+                {
+                    Console.WriteLine($"[AUDIO DEBUG] Overall error loading audio: {ex.Message}");
+                    Console.WriteLine($"[AUDIO DEBUG] Stack trace: {ex.StackTrace}");
+                }
                 _audioLoaded = false;
+            }
+        }
+        
+        // Helper method to get a description for BASS error codes
+        private static string GetBassErrorDescription(Errors error)
+        {
+            switch (error)
+            {
+                case Errors.Init: return "BASS not initialized";
+                case Errors.FileOpen: return "Can't open file";
+                case Errors.Driver: return "Can't find a free sound driver";
+                case Errors.Memory: return "Memory error";
+                case Errors.SampleFormat: return "Unsupported sample format";
+                case Errors.Position: return "Invalid position";
+                case Errors.FileFormat: return "Unsupported file format";
+                case Errors.Speaker: return "Unavailable speaker";
+                case Errors.NoInternet: return "No internet connection";
+                case Errors.Create: return "Couldn't create the file";
+                case Errors.NoFX: return "Effects are not available";
+                case Errors.NotAvailable: return "Requested data is not available";
+                case Errors.Codec: return "Codec is not available/supported";
+                case Errors.Ended: return "The channel has ended";
+                case Errors.Busy: return "The device is busy";
+                case Errors.Unstreamable: return "The file cannot be streamed";
+                default: return $"Unknown error ({error})";
             }
         }
 
@@ -322,6 +463,25 @@ namespace C4TX.SDL.Engine
 
             GameEngine._rateChangeTime = GameEngine._currentTime;
             GameEngine._showRateIndicator = true;
+
+            // Recalculate difficulty rating for the current beatmap with the new rate
+            if (GameEngine._currentBeatmap != null && GameEngine._currentState == GameEngine.GameState.Menu)
+            {
+                // Calculate new difficulty with the current rate
+                double newRating = BeatmapEngine.CalculateAndUpdateDifficultyRating(
+                    GameEngine._currentBeatmap, 
+                    GameEngine._currentRate, 
+                    true); // Set silent to true to avoid console spam
+                
+                // Update the beatmap info in the database if available
+                var beatmapInfo = BeatmapEngine.GetSelectedBeatmapInfo();
+                if (beatmapInfo != null) 
+                {
+                    // Update the cached rating in the BeatmapInfo object
+                    beatmapInfo.CachedDifficultyRating = newRating;
+                    beatmapInfo.LastCachedRate = GameEngine._currentRate;
+                }
+            }
 
             Console.WriteLine($"Playback rate adjusted to {GameEngine._currentRate:F1}x");
         }

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using static SDL2.SDL;
 
 namespace C4TX.SDL.Models
 {
@@ -31,6 +32,15 @@ namespace C4TX.SDL.Models
         public string SelectedSkin { get; set; } = "Default"; // Default skin name
         public AccuracyModel AccuracyModel { get; set; } = AccuracyModel.Linear; // Default accuracy calculation model
         public bool ShowLaneSeparators { get; set; } = true; // Show lane separators
+        
+        // Keybindings - default to E, R, O, P
+        public SDL_Scancode[] KeyBindings { get; set; } = new SDL_Scancode[4]
+        {
+            SDL_Scancode.SDL_SCANCODE_E,
+            SDL_Scancode.SDL_SCANCODE_R,
+            SDL_Scancode.SDL_SCANCODE_O,
+            SDL_Scancode.SDL_SCANCODE_P
+        };
 
         // Constructor with default values
         public GameSettings()

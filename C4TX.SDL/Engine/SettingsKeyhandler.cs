@@ -6,8 +6,24 @@ namespace C4TX.SDL.Engine
 {
     public class SettingsKeyhandler
     {
+        // Flag to track which key is being bound
+        public static bool _isBindingKey = false;
+        public static int _currentKeyBindIndex = -1;
+        
         public static void HandleSettingsKeys(SDL_Scancode scancode)
         {
+            // If we're in key binding mode, handle key binding
+            if (_isBindingKey && _currentKeyBindIndex >= 0 && _currentKeyBindIndex < 4)
+            {
+                // Set the keybinding to the pressed key
+                _keyBindings[_currentKeyBindIndex] = scancode;
+                
+                // Exit key binding mode
+                _isBindingKey = false;
+                _currentKeyBindIndex = -1;
+                return;
+            }
+            
             // Handle settings menu key presses
             if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
             {
@@ -36,7 +52,7 @@ namespace C4TX.SDL.Engine
             if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
             {
                 // Move to next setting
-                _currentSettingIndex = (_currentSettingIndex < 8) ? _currentSettingIndex + 1 : 8;
+                _currentSettingIndex = (_currentSettingIndex < 12) ? _currentSettingIndex + 1 : 12;
                 return;
             }
 
@@ -102,6 +118,14 @@ namespace C4TX.SDL.Engine
                     case 8: // Show Lane Seperator
                         _showSeperatorLines = !_showSeperatorLines;
                         break;
+                    case 9: // Key Binding 1
+                    case 10: // Key Binding 2
+                    case 11: // Key Binding 3
+                    case 12: // Key Binding 4
+                        // Enter key binding mode for the selected key
+                        _isBindingKey = true;
+                        _currentKeyBindIndex = _currentSettingIndex - 9;
+                        break;
                 }
                 return;
             }
@@ -164,6 +188,14 @@ namespace C4TX.SDL.Engine
                         break;
                     case 8: // Show Lane Seperator
                         _showSeperatorLines = !_showSeperatorLines;
+                        break;
+                    case 9: // Key Binding 1
+                    case 10: // Key Binding 2
+                    case 11: // Key Binding 3
+                    case 12: // Key Binding 4
+                        // Enter key binding mode for the selected key
+                        _isBindingKey = true;
+                        _currentKeyBindIndex = _currentSettingIndex - 9;
                         break;
                 }
                 return;

@@ -134,6 +134,13 @@ namespace C4TX.SDL.Engine
         public static string _loginInputFocus = "email"; // can be "email" or "password"
         public static string _authError = "";
         public static bool _isAuthenticating = false;
+        
+        // Song search variables
+        public static bool _isSearching = false;
+        public static string _searchQuery = "";
+        public static List<BeatmapSet> _searchResults = new List<BeatmapSet>();
+        public static bool _showSearchResults = false;
+        public static bool _isSearchInputFocused = true;
 
         // For results screen
         public static List<(double NoteTime, double HitTime, double Deviation)> _noteHits = new List<(double, double, double)>();
@@ -160,13 +167,20 @@ namespace C4TX.SDL.Engine
         private static int _compositionCursor = 0;
         private static int _compositionSelectionLen = 0;
 
+        // Beatmap database details cache to avoid querying on every frame
+        public static string _cachedCreator = "";
+        public static double _cachedBPM = 0;
+        public static double _cachedLength = 0;
+        public static bool _hasCachedDetails = false;
+
         public GameEngine(string? songsDirectory = null)
         {
-            _beatmapService = new BeatmapService(songsDirectory);
+            // Initialize services in correct order
+            _difficultyRatingService = new DifficultyRatingService();
+            _beatmapService = new BeatmapService(new BeatmapDatabaseService(), _difficultyRatingService, songsDirectory);
             _scoreService = new ScoreService();
             _settingsService = new SettingsService();
             _accuracyService = new AccuracyService();
-            _difficultyRatingService = new DifficultyRatingService();
             _gameTimer = new Stopwatch();
             _availableBeatmapSets = new List<BeatmapSet>();
 
@@ -280,10 +294,10 @@ namespace C4TX.SDL.Engine
             _hitEffects.Clear();
             _hasShownResults = false;
             _selectedScore = null;
-
+            
             // Reset the result screen accuracy model to match the current game setting
             _resultScreenAccuracyModel = _accuracyModel;
-
+            
             // Stop any audio preview that might be playing
             AudioEngine.StopAudioPreview();
 
@@ -293,19 +307,41 @@ namespace C4TX.SDL.Engine
                 return;
             }
 
+            // Output key debug information
+            Console.WriteLine($"[AUDIO DEBUG] Starting gameplay with beatmap: {_currentBeatmap.Title}");
+            Console.WriteLine($"[AUDIO DEBUG] Audio filename from beatmap: {_currentBeatmap.AudioFilename}");
+            Console.WriteLine($"[AUDIO DEBUG] Audio filename is null or empty: {string.IsNullOrEmpty(_currentBeatmap.AudioFilename)}");
+            Console.WriteLine($"[AUDIO DEBUG] Current audio path: {AudioEngine._currentAudioPath}");
+            Console.WriteLine($"[AUDIO DEBUG] Audio loaded status: {AudioEngine._audioLoaded}");
+            Console.WriteLine($"[AUDIO DEBUG] Audio stream handle: {AudioEngine._audioStream}");
+            Console.WriteLine($"[AUDIO DEBUG] Mixer stream handle: {AudioEngine._mixerStream}");
+
             // Reset audio file position to the beginning
             // This is critical to ensure sync between beatmap and audio
             if (AudioEngine._mixerStream != 0)
             {
                 Bass.ChannelSetPosition(AudioEngine._mixerStream, 0);
+                Console.WriteLine("[AUDIO DEBUG] Reset audio position to start");
+            }
+            else
+            {
+                Console.WriteLine("[AUDIO DEBUG] Warning: No mixer stream available to reset position");
             }
 
             // Explicitly reload the audio to ensure clean state
             if (!string.IsNullOrEmpty(AudioEngine._currentAudioPath) && File.Exists(AudioEngine._currentAudioPath))
             {
                 // Fully reload audio to ensure clean start
+                Console.WriteLine("Reloading audio from beginning");
                 AudioEngine.StopAudio();
-                AudioEngine.TryLoadAudio();
+                AudioEngine.TryLoadAudio(false); // Set to false to enable logging
+                
+                // Double-check after loading
+                Console.WriteLine($"After reload - Audio loaded: {AudioEngine._audioLoaded}, Mixer stream: {AudioEngine._mixerStream}");
+            }
+            else
+            {
+                Console.WriteLine($"Audio file not found or path is null: {AudioEngine._currentAudioPath}");
             }
 
             // Log the current beatmap ID for debugging
@@ -322,7 +358,7 @@ namespace C4TX.SDL.Engine
             if (_currentBeatmap.HitObjects.Count > 0)
             {
                 var lastNote = _currentBeatmap.HitObjects.OrderByDescending(n => n.StartTime).First();
-                _songEndTime = GetRateAdjustedStartTime(lastNote.StartTime) + 2000; // Add 5 seconds after the last note
+                _songEndTime = GetRateAdjustedStartTime(lastNote.StartTime) + 2000; // Add 2 seconds after the last note
             }
             else
             {
@@ -338,16 +374,40 @@ namespace C4TX.SDL.Engine
                     AudioEngine.StopAudio();
 
                     // Start audio playback after the countdown delay
+                    Console.WriteLine($"Starting audio playback after {START_DELAY_MS}ms delay");
                     Task.Delay(START_DELAY_MS).ContinueWith(_ =>
                     {
-                        Bass.ChannelPlay(AudioEngine._mixerStream);
-                        Console.WriteLine("Audio playback started");
+                        if (AudioEngine._mixerStream != 0)
+                        {
+                            Bass.ChannelPlay(AudioEngine._mixerStream);
+                            Console.WriteLine("Audio playback started successfully");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Failed to start audio: mixer stream is 0");
+                            // Try to recover
+                            if (!string.IsNullOrEmpty(AudioEngine._currentAudioPath) && File.Exists(AudioEngine._currentAudioPath))
+                            {
+                                Console.WriteLine("Attempting emergency audio reload");
+                                AudioEngine.TryLoadAudio(false);
+                                if (AudioEngine._mixerStream != 0)
+                                {
+                                    Bass.ChannelPlay(AudioEngine._mixerStream);
+                                    Console.WriteLine("Emergency audio reload successful");
+                                }
+                            }
+                        }
                     });
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"Error starting audio playback: {ex.Message}");
+                    Console.WriteLine($"Stack trace: {ex.StackTrace}");
                 }
+            }
+            else
+            {
+                Console.WriteLine($"Audio not started due to: Enabled={AudioEngine._audioEnabled}, Loaded={AudioEngine._audioLoaded}, MixerStream={AudioEngine._mixerStream}");
             }
 
             Console.WriteLine("Game started");
@@ -450,6 +510,10 @@ namespace C4TX.SDL.Engine
                         if (_currentState == GameState.ProfileSelect)
                         {
                             ProfileKeyhandler.ProcessTextInput(text);
+                        }
+                        else if (_currentState == GameState.Menu && _isSearching)
+                        {
+                            SearchKeyhandler.ProcessTextInput(text);
                         }
                         // Add more states if they need text input
                     }
@@ -1032,6 +1096,13 @@ namespace C4TX.SDL.Engine
             _noteShape = settings.NoteShape;
             _selectedSkin = settings.SelectedSkin;
             _accuracyModel = settings.AccuracyModel;
+            _showSeperatorLines = settings.ShowLaneSeparators;
+            
+            // Load key bindings if they exist
+            if (settings.KeyBindings != null && settings.KeyBindings.Length == 4)
+            {
+                _keyBindings = settings.KeyBindings;
+            }
             
             // Find the selected skin index
             if (_skinService != null)
@@ -1082,7 +1153,8 @@ namespace C4TX.SDL.Engine
                     NoteShape = _noteShape,
                     SelectedSkin = _selectedSkin,
                     AccuracyModel = _accuracyModel,
-                    ShowLaneSeparators = _showSeperatorLines
+                    ShowLaneSeparators = _showSeperatorLines,
+                    KeyBindings = _keyBindings
                 };
 
                 _settingsService.SaveSettings(settings, username);
@@ -1122,32 +1194,25 @@ namespace C4TX.SDL.Engine
             }
         }
 
-        // Gets text from an SDL_TextInputEvent
+        // Helper method to extract text from SDL_TextInputEvent
         private static string SDL_GetEventText(SDL_Event e)
         {
-            if (e.type != SDL_EventType.SDL_TEXTINPUT)
-                return string.Empty;
-
-            // Create a temporary string to accumulate the characters
-            StringBuilder sb = new StringBuilder();
-            
-            // SDL uses fixed-size arrays of bytes for text in events
-            // We need to read until the null terminator or the end of the array
             unsafe
             {
-                // Maximum text size in SDL_TextInputEvent
-                const int maxSize = 32; // SDL_TEXTINPUTEVENT_TEXT_SIZE
+                // Marshal the text from the SDL_TextInputEvent 
+                byte* textPtr = e.text.text;
                 
-                // Access the text field data directly
-                for (int i = 0; i < maxSize; i++)
+                // Convert to string, handling null termination
+                string result = "";
+                int i = 0;
+                while (textPtr[i] != 0 && i < SDL_TEXTINPUTEVENT_TEXT_SIZE)
                 {
-                    byte b = e.text.text[i];
-                    if (b == 0) break; // null terminator
-                    sb.Append((char)b);
+                    result += (char)textPtr[i];
+                    i++;
                 }
+                
+                return result;
             }
-            
-            return sb.ToString();
         }
     }
 }

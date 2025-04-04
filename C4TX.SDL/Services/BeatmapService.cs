@@ -1,118 +1,276 @@
 using System.Security.Cryptography;
 using C4TX.SDL.Models;
+using System.Text;
 
 namespace C4TX.SDL.Services
 {
     public class BeatmapService
     {
         private readonly string _songsDirectory;
+        private readonly BeatmapDatabaseService _databaseService;
+        private readonly DifficultyRatingService _difficultyRatingService;
+        
+        // Add a cache for difficulty ratings to avoid recalculation
+        private readonly Dictionary<string, float> _difficultyRatingCache = new Dictionary<string, float>();
+        
+        // Public property to access database service
+        public BeatmapDatabaseService DatabaseService => _databaseService;
+        
+        // Public property to access songs directory
+        public string SongsDirectory => _songsDirectory;
 
-        public BeatmapService(string? songsDirectory = null)
+        public BeatmapService(BeatmapDatabaseService databaseService, DifficultyRatingService difficultyRatingService, string? songsDirectory = null)
         {
             if (string.IsNullOrEmpty(songsDirectory))
             {
-                string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-                string c4txDirectory = Path.Combine(appData, "c4tx");
-                string defaultSongsDirectory = Path.Combine(c4txDirectory, "Songs");
-
-                if (Directory.Exists(defaultSongsDirectory))
-                {
-                    _songsDirectory = defaultSongsDirectory;
-                }
-                else
-                {
-                    // Try program files
-                    string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-                    string altc4txDirectory = Path.Combine(programFiles, "c4tx");
-                    string altSongsDirectory = Path.Combine(altc4txDirectory, "Songs");
-
-                    if (Directory.Exists(altSongsDirectory))
-                    {
-                        _songsDirectory = altSongsDirectory;
-                    }
-                    else
-                    {
-                        // Fallback to current directory
-                        _songsDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Songs");
-                        if (!Directory.Exists(_songsDirectory))
-                        {
-                            Directory.CreateDirectory(_songsDirectory);
-                        }
-                    }
-                }
+                // Use AppData/Local/c4tx/Songs instead of folder next to executable
+                songsDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "c4tx", "Songs");
             }
-            else
-            {
-                _songsDirectory = songsDirectory;
-            }
-
+            
+            _songsDirectory = songsDirectory;
+            
             Console.WriteLine($"Using songs directory: {_songsDirectory}");
+            
+            // Create if it doesn't exist
+            if (!Directory.Exists(_songsDirectory))
+            {
+                try 
+                {
+                    Directory.CreateDirectory(_songsDirectory);
+                    Console.WriteLine($"Created songs directory: {_songsDirectory}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error creating songs directory: {ex.Message}");
+                }
+            }
+            
+            // Initialize database service
+            _databaseService = databaseService;
+            _difficultyRatingService = difficultyRatingService;
         }
 
         public List<BeatmapSet> GetAvailableBeatmapSets()
         {
-            List<BeatmapSet> beatmapSets = new List<BeatmapSet>();
-
-            if (!Directory.Exists(_songsDirectory))
+            List<BeatmapSet> beatmapSets;
+            
+            try
             {
-                Console.WriteLine($"Songs directory not found: {_songsDirectory}");
+                // Check if we have cached beatmaps in the database
+                if (_databaseService.HasCachedBeatmaps())
+                {
+                    // Get initial data from database
+                    Console.WriteLine("Loading beatmaps from database cache...");
+                    beatmapSets = _databaseService.GetCachedBeatmapSets();
+                    
+                    // Warm up the difficulty rating cache
+                    WarmupDifficultyRatingCache(beatmapSets);
+                    
+                    // Check if any files have been modified
+                    bool modified = _databaseService.AreBeatmapsModified(beatmapSets);
+                    
+                    if (!modified)
+                    {
+                        Console.WriteLine("Using cached beatmap data - no changes detected");
+                        return beatmapSets;
+                    }
+                    
+                    Console.WriteLine("Changes detected in beatmap files. Refreshing cache...");
+                }
+                
+                // Load beatmaps from files
+                beatmapSets = LoadBeatmapSetsFromFiles();
+                
+                // Save to database for future use
+                _databaseService.SaveBeatmapSets(beatmapSets);
+                
+                // Make sure BPM and Length are properly updated in database
+                foreach (var set in beatmapSets)
+                {
+                    foreach (var beatmap in set.Beatmaps)
+                    {
+                        // Update BPM and Length info in database if needed
+                        if (beatmap.BPM > 0 || beatmap.Length > 0)
+                        {
+                            _databaseService.UpdateBeatmapDetails(beatmap.Id, beatmap.BPM, beatmap.Length);
+                        }
+                    }
+                }
+                
+                // Warm up the difficulty rating cache with the newly loaded data
+                WarmupDifficultyRatingCache(beatmapSets);
+                
                 return beatmapSets;
             }
-
-            foreach (var directory in Directory.GetDirectories(_songsDirectory))
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading beatmap sets: {ex.Message}");
+                
+                // Return an empty list to avoid null reference exceptions
+                return new List<BeatmapSet>();
+            }
+        }
+        
+        private List<BeatmapSet> LoadBeatmapSetsFromFiles()
+        {
+            var result = new List<BeatmapSet>();
+            
+            // Find all .osu files in the songs directory
+            string[] beatmapFiles;
+            try
+            {
+                beatmapFiles = Directory.GetFiles(_songsDirectory, "*.osu", SearchOption.AllDirectories);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error searching for beatmap files: {ex.Message}");
+                return result;
+            }
+            
+            Console.WriteLine($"Found {beatmapFiles.Length} beatmap files");
+            
+            // Group the beatmaps by directory
+            var beatmapsByDir = beatmapFiles
+                .GroupBy(f => Path.GetDirectoryName(f) ?? string.Empty)
+                .Where(g => !string.IsNullOrEmpty(g.Key))
+                .ToDictionary(g => g.Key, g => g.ToList());
+            
+            Console.WriteLine($"Grouped into {beatmapsByDir.Count} beatmap sets");
+            
+            // Process each directory as a beatmap set
+            foreach (var dir in beatmapsByDir.Keys)
             {
                 try
                 {
-                    var osuFiles = Directory.GetFiles(directory, "*.osu");
-                    if (osuFiles.Length > 0)
+                    var beatmapList = beatmapsByDir[dir];
+                    if (beatmapList.Count == 0)
+                        continue;
+                    
+                    // Get directory name for the set ID and name
+                    string dirName = new DirectoryInfo(dir).Name;
+                    
+                    // Calculate a hash of the directory for set identification
+                    string dirHash = CalculateDirectoryHash(dir);
+                    
+                    // Basic information from the first beatmap
+                    var firstBeatmap = LoadBasicInfoFromFile(beatmapList[0]);
+                    
+                    if (firstBeatmap == null)
+                        continue;
+                    
+                    // Create a new set
+                    var set = new BeatmapSet
                     {
-                        var setId = Path.GetFileName(directory).Split(' ')[0];
-                        var setName = Path.GetFileName(directory);
-
-                        BeatmapSet beatmapSet = new BeatmapSet
+                        Id = dirHash, // Use directory hash instead of name
+                        Name = dirName,
+                        Title = firstBeatmap.Title,
+                        Artist = firstBeatmap.Artist,
+                        Path = dir,
+                        DirectoryPath = dir,
+                        Creator = firstBeatmap.Creator,
+                        Beatmaps = new List<BeatmapInfo>()
+                    };
+                    
+                    // Determine the MapPack (parent directory name)
+                    try
+                    {
+                        var directoryInfo = new DirectoryInfo(dir);
+                        if (directoryInfo.Parent != null)
                         {
-                            Id = setId,
-                            Name = setName,
-                            Path = directory,
-                            Beatmaps = new List<BeatmapInfo>()
-                        };
-
-                        // Get basic info from first beatmap
-                        var firstBeatmap = LoadBasicInfoFromFile(osuFiles[0]);
-                        if (firstBeatmap != null)
-                        {
-                            beatmapSet.Title = firstBeatmap.Title;
-                            beatmapSet.Artist = firstBeatmap.Artist;
+                            set.MapPack = directoryInfo.Parent.FullName;
                         }
-
-                        // Add each beatmap in the set
-                        foreach (var osuFile in osuFiles)
+                        else
                         {
-                            var beatmaploaded = LoadBeatmapFromFile(osuFile);
+                            set.MapPack = dir; // Fallback to the current directory if no parent
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error determining MapPack for {dir}: {ex.Message}");
+                        set.MapPack = dir; // Fallback to directory path
+                    }
+                    
+                    // Skip empty artist or title
+                    if (string.IsNullOrWhiteSpace(set.Artist) || string.IsNullOrWhiteSpace(set.Title))
+                        continue;
+                    
+                    // Process each beatmap file in the set
+                    foreach (var beatmapFile in beatmapList)
+                    {
+                        try
+                        {
+                            var beatmap = LoadBasicInfoFromFile(beatmapFile);
+                            if (beatmap == null)
+                                continue;
+                            
+                            // Get length of the beatmap
+                            double length = 0;
+                            
+                            // Try to load the full beatmap to get the Length
+                            var fullBeatmap = LoadBeatmapFromFile(beatmapFile);
+                            if (fullBeatmap != null)
+                            {
+                                length = fullBeatmap.Length;
+                            }
+                            else if (!string.IsNullOrEmpty(beatmap.AudioFilename))
+                            {
+                                string audioPath = Path.Combine(dir, beatmap.AudioFilename);
+                                if (File.Exists(audioPath))
+                                {
+                                    // TODO: Implement audio length detection
+                                }
+                            }
+                            
+                            // Calculate map hash for reliable identification
+                            string mapHash = CalculateBeatmapHash(beatmapFile);
+                            
+                            // Create a new beatmap info
                             var beatmapInfo = new BeatmapInfo
                             {
-                                Id = Path.GetFileNameWithoutExtension(osuFile),
-                                SetId = setId,
-                                Path = osuFile,
-                                Difficulty = beatmaploaded.Version,
-                                Length = beatmaploaded.Length,
-                                Creator = beatmaploaded.Creator,
-                                BPM = beatmaploaded.BPM
+                                Id = mapHash, // Use hash instead of filename
+                                SetId = set.Id,
+                                Path = beatmapFile,
+                                Difficulty = beatmap.Version,
+                                Version = beatmap.Version,
+                                Length = length,
+                                BPM = beatmap.BPM,
+                                Creator = beatmap.Creator,
+                                AudioFilename = beatmap.AudioFilename
                             };
-
-                            beatmapSet.Beatmaps.Add(beatmapInfo);
+                            
+                            set.Beatmaps.Add(beatmapInfo);
                         }
-
-                        beatmapSets.Add(beatmapSet);
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error processing beatmap {beatmapFile}: {ex.Message}");
+                        }
                     }
+                    
+                    // Skip sets with no valid beatmaps
+                    if (set.Beatmaps.Count == 0)
+                        continue;
+                    
+                    // Sort beatmaps by difficulty
+                    set.Beatmaps = set.Beatmaps
+                        .OrderBy(b => CalculateDifficultyRating(b.Path))
+                        .ToList();
+                    
+                    result.Add(set);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error processing directory {directory}: {ex.Message}");
+                    Console.WriteLine($"Error processing beatmap set {dir}: {ex.Message}");
                 }
             }
-
-            return beatmapSets;
+            
+            // Sort sets by directory path, then by artist and title
+            result = result
+                .OrderBy(s => s.DirectoryPath)
+                .ThenBy(s => s.Artist)
+                .ThenBy(s => s.Title)
+                .ToList();
+            
+            return result;
         }
 
         private string GetDifficultyFromFilename(string filename)
@@ -127,40 +285,68 @@ namespace C4TX.SDL.Services
             }
         }
 
-        private Beatmap? LoadBasicInfoFromFile(string filePath)
+        public Beatmap? LoadBasicInfoFromFile(string filePath)
         {
             try
             {
-                Beatmap beatmap = new Beatmap();
+                var beatmap = new Beatmap();
+                beatmap.Id = Path.GetFileNameWithoutExtension(filePath);
 
                 using (var reader = new StreamReader(filePath))
                 {
                     string? line;
+                    bool inMetaData = false;
                     bool inEvents = false;
-                    
+
                     while ((line = reader.ReadLine()) != null)
                     {
-                        if (line.StartsWith("Title:"))
-                            beatmap.Title = line.Substring(6).Trim();
-                        else if (line.StartsWith("Artist:"))
-                            beatmap.Artist = line.Substring(7).Trim();
-                        else if (line.StartsWith("Creator:"))
-                            beatmap.Creator = line.Substring(8).Trim();
-                        else if (line.StartsWith("Version:"))
-                            beatmap.Version = line.Substring(8).Trim();
-                        else if (line.StartsWith("AudioFilename:"))
-                            beatmap.AudioFilename = line.Substring(15).Trim();
-                        else if (line.StartsWith("Mode:"))
+                        // Parse metadata section
+                        if (line == "[Metadata]")
                         {
-                            if (line.Substring(5).Trim() != "3")
-                                return null;
-                        }
-                        else if (line == "[Events]")
-                        {
-                            inEvents = true;
+                            inMetaData = true;
                             continue;
                         }
-                        else if (inEvents && line.StartsWith("0,0,\""))
+                        else if (line == "[Difficulty]" || line == "[Events]" || line == "[TimingPoints]" || line == "[HitObjects]")
+                        {
+                            inMetaData = false;
+                            if (line == "[Events]")
+                            {
+                                inEvents = true;
+                            }
+                        }
+
+                        // Inside metadata section
+                        if (inMetaData && !string.IsNullOrWhiteSpace(line))
+                        {
+                            string[] parts = line.Split(':');
+                            if (parts.Length >= 2)
+                            {
+                                string key = parts[0].Trim();
+                                string value = string.Join(":", parts.Skip(1)).Trim();
+
+                                switch (key)
+                                {
+                                    case "Title":
+                                        beatmap.Title = value;
+                                        break;
+                                    case "Artist":
+                                        beatmap.Artist = value;
+                                        break;
+                                    case "Creator":
+                                        beatmap.Creator = value;
+                                        break;
+                                    case "Version":
+                                        beatmap.Version = value;
+                                        break;
+                                    case "AudioFilename":
+                                        beatmap.AudioFilename = value;
+                                        break;
+                                }
+                            }
+                        }
+
+                        // Inside events section (for background image)
+                        if (inEvents && !string.IsNullOrWhiteSpace(line))
                         {
                             // Background image line format: 0,0,"filename.jpg",0,0
                             try
@@ -199,13 +385,23 @@ namespace C4TX.SDL.Services
             }
         }
 
-        public Beatmap LoadBeatmapFromFile(string filePath)
+        public Beatmap? LoadBeatmapFromFile(string filePath)
         {
+            // Skip already known corrupted files
+            if (_databaseService.IsCorruptedBeatmap(filePath))
+            {
+                Console.WriteLine($"Skipping known corrupted beatmap: {filePath}");
+                return null;
+            }
+            
             try
             {
                 var beatmap = LoadBasicInfoFromFile(filePath);
                 if (beatmap == null)
-                    return new Beatmap();
+                {
+                    _databaseService.AddCorruptedBeatmap(filePath, "Failed to load basic info");
+                    return null;
+                }
 
                 // Parse the full beatmap data
                 using (var reader = new StreamReader(filePath))
@@ -223,16 +419,48 @@ namespace C4TX.SDL.Services
                         // Check for mania mode and key count
                         if (line.StartsWith("Mode:"))
                         {
-                            int mode = int.Parse(line.Substring(5).Trim());
-                            // Mode 3 is mania
-                            isMania = mode == 3;
-                            if (!isMania) return null;
+                            try {
+                                if (int.TryParse(line.Substring(5).Trim(), out int mode))
+                                {
+                                    // Mode 3 is mania
+                                    isMania = mode == 3;
+                                    if (!isMania)
+                                    {
+                                        _databaseService.AddCorruptedBeatmap(filePath, "Not a mania beatmap (Mode != 3)");
+                                        return null;
+                                    }
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"Warning: Could not parse Mode value: '{line}'");
+                                }
+                            }
+                            catch (Exception ex) {
+                                Console.WriteLine($"Error parsing Mode: {ex.Message}");
+                                // Default to mania mode to try to continue
+                                isMania = true;
+                            }
                         }
                         else if (line.StartsWith("CircleSize:"))
                         {
-                            // In mania, CircleSize is the key count
-                            keyCount = int.Parse(line.Substring(11).Trim());
-                            beatmap.KeyCount = keyCount;
+                            try {
+                                if (double.TryParse(line.Substring(11).Trim(), System.Globalization.NumberStyles.Float,
+                                                   System.Globalization.CultureInfo.InvariantCulture, out double cs))
+                                {
+                                    keyCount = (int)cs;
+                                    beatmap.KeyCount = keyCount;
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"Warning: Could not parse CircleSize value: '{line}'");
+                                }
+                            }
+                            catch (Exception ex) {
+                                Console.WriteLine($"Error parsing CircleSize: {ex.Message}");
+                                // Default to 4K if we fail to parse
+                                keyCount = 4;
+                                beatmap.KeyCount = keyCount;
+                            }
                         }
                         else if (line == "[TimingPoints]")
                         {
@@ -250,23 +478,52 @@ namespace C4TX.SDL.Services
                         {
                             try
                             {
-                                var parts = line.Split(',');
-                                
-                                if (parts.Length < 8)
-                                    continue;
-
-                                if (parts[6] == "1")
+                                // Get BPM from timing points
+                                // Format: time,beatLength,meter,sampleSet,sampleIndex,volume,uninherited,effects
+                                string[] parts = line.Split(',');
+                                if (parts.Length >= 2)
                                 {
+                                    // Make parsing more robust by trimming values and handling culture differences
+                                    if (double.TryParse(parts[0].Trim(), System.Globalization.NumberStyles.Float, 
+                                                      System.Globalization.CultureInfo.InvariantCulture, out double timeMs) &&
+                                        double.TryParse(parts[1].Trim(), System.Globalization.NumberStyles.Float,
+                                                      System.Globalization.CultureInfo.InvariantCulture, out double beatLength))
+                                    {
+                                        // Determine if this is a real timing point or an inherited one
+                                        bool isUninherited = true; // Default to true for backward compatibility
+                                        
+                                        if (parts.Length >= 7)
+                                        {
+                                            // Try to parse the uninherited flag (1 = timing point, 0 = inherited)
+                                            if (int.TryParse(parts[6].Trim(), out int uninheritedFlag))
+                                            {
+                                                isUninherited = uninheritedFlag == 1;
+                                            }
+                                            else
+                                            {
+                                                // If we can't parse it as an integer, try as a string comparison
+                                                isUninherited = parts[6].Trim() == "1";
+                                            }
+                                        }
 
-                                    bpms.Add(60000.0 / double.Parse(parts[1].Replace(".", ",")));
-                                    times.Add(double.Parse(parts[0].Replace(".", ",")));
+                                        times.Add(timeMs);
 
-                                    //Console.WriteLine("BPM: " + double.Parse(parts[1].Replace(".", ",")));
+                                        if (isUninherited && beatLength > 0)
+                                        {
+                                            double _bpm = 60000.0 / beatLength;
+                                            bpms.Add(_bpm);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine($"Warning: Could not parse timing values: '{parts[0]}', '{parts[1]}'");
+                                    }
                                 }
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine($"Error parsing hit object: {ex.Message}");
+                                Console.WriteLine($"Error parsing timing point '{line}': {ex.Message}");
+                                // Don't return, just ignore this timing point and continue
                             }
                         }
 
@@ -274,69 +531,129 @@ namespace C4TX.SDL.Services
                         {
                             try
                             {
-                                var parts = line.Split(',');
+                                // Parse hit objects based on key count
+                                string[] parts = line.Split(',');
                                 if (parts.Length >= 5)
                                 {
-                                    double x = double.Parse(parts[0]);
-                                    double time = double.Parse(parts[2]);
-                                    int type = int.Parse(parts[3]);
-                                    int hitSound = int.Parse(parts[4]);
-
-                                    // Calculate column from X position for mania maps
-                                    int column = 0;
-                                    if (isMania && keyCount > 0)
+                                    // Make parsing more robust using TryParse
+                                    if (int.TryParse(parts[0].Trim(), out int x) &&
+                                        double.TryParse(parts[2].Trim(), System.Globalization.NumberStyles.Float,
+                                                      System.Globalization.CultureInfo.InvariantCulture, out double time) &&
+                                        int.TryParse(parts[3].Trim(), out int type))
                                     {
-                                        // In mania, x position is from 0 to 512, and should be mapped to columns
-                                        column = (int)(x * keyCount / 512);
-                                        // Ensure column is within bounds (0 to keyCount-1)
-                                        column = Math.Min(Math.Max(column, 0), keyCount - 1);
-                                    }
+                                        // Convert x position to column (0-based)
+                                        int column = (int)Math.Floor(x * keyCount / 512.0);
+                                        column = Math.Clamp(column, 0, keyCount - 1);
 
-                                    // Check if it's a long note
-                                    double endTime = time;
-                                    if ((type & 128) > 0 && parts.Length > 5)
-                                    {
-                                        // Handle the long note end time from the format
-                                        var extraInfo = parts[5].Split(':');
-                                        if (extraInfo.Length > 0)
+                                        // For 4K, we just use the column directly
+                                        if (keyCount == 4)
                                         {
-                                            endTime = double.Parse(extraInfo[0]);
-                                        }
-                                    }
+                                            if (column < 0 || column > 3)
+                                            {
+                                                continue;
+                                            }
 
-                                    HitObject hitObject;
-                                    if (endTime > time)
-                                    {
-                                        // It's a long note
-                                        hitObject = new HitObject(time, endTime, column);
+                                            HitObject hitObject;
+                                            // Type 128 means long note
+                                            bool isLongNote = (type & 128) != 0;
+                                            double endTime = time;
+                                            
+                                            if (isLongNote && parts.Length >= 6)
+                                            {
+                                                // Extract end time from extra parameters
+                                                string[] extraParts = parts[5].Split(':');
+                                                if (extraParts.Length >= 1)
+                                                {
+                                                    if (double.TryParse(extraParts[0].Trim(), System.Globalization.NumberStyles.Float,
+                                                                      System.Globalization.CultureInfo.InvariantCulture, out double parsedEndTime))
+                                                    {
+                                                        endTime = parsedEndTime;
+                                                    }
+                                                    else
+                                                    {
+                                                        Console.WriteLine($"Warning: Could not parse long note end time: '{extraParts[0]}'");
+                                                        // Default to normal note if we can't parse the end time
+                                                        isLongNote = false;
+                                                    }
+                                                }
+                                            }
+
+                                            maxTime = Math.Max(maxTime, time);
+                                            
+                                            if (isLongNote)
+                                            {
+                                                // It's a long note
+                                                hitObject = new HitObject(time, endTime, column);
+                                            }
+                                            else
+                                            {
+                                                // Normal note
+                                                hitObject = new HitObject(time, column, HitObjectType.Normal);
+                                            }
+
+                                            beatmap.HitObjects.Add(hitObject);
+                                            maxTime = Math.Max(maxTime, endTime);
+                                        }
                                     }
                                     else
                                     {
-                                        // Normal note
-                                        hitObject = new HitObject(time, column, HitObjectType.Normal);
+                                        Console.WriteLine($"Warning: Could not parse hit object values from '{line}'");
                                     }
-
-                                    beatmap.HitObjects.Add(hitObject);
-                                    maxTime = Math.Max(maxTime, endTime);
                                 }
                             }
                             catch (Exception ex)
                             {
-                                Console.WriteLine($"Error parsing hit object: {ex.Message}");
+                                Console.WriteLine($"Error parsing hit object '{line}': {ex.Message}");
+                                // Continue processing other notes
                             }
                         }
                     }
 
-                    beatmap.Length = maxTime;
-                    times.Add(maxTime);
-
-                    // Calculate average BPM
-                    double bpm = 0;
-                    for (int i = 0; i < bpms.Count; i++)
+                    if (beatmap.BPM < 1 || !double.IsFinite(beatmap.BPM))
                     {
-                        bpm += bpms[i] * (times[i + 1] - (i == 0 ? 0 : times[i]));
+                        // Calculate average BPM if we have timing points
+                        if (bpms.Count > 0 && maxTime > 0)
+                        {
+                            // Use the first BPM if available, or calculate a weighted average
+                            if (bpms.Count == 1)
+                            {
+                                beatmap.BPM = bpms[0];
+                            }
+                            else
+                            {
+                                // Sort times and make sure we have enough time points
+                                times.Sort();
+                                while (times.Count <= bpms.Count)
+                                {
+                                    times.Add(maxTime);
+                                }
+                                
+                                // Calculate weighted average BPM
+                                double totalBpm = 0;
+                                double totalTime = 0;
+                                
+                                for (int i = 0; i < bpms.Count; i++)
+                                {
+                                    double duration = (i < times.Count - 1) ? times[i + 1] - times[i] : maxTime - times[i];
+                                    if (duration > 0)
+                                    {
+                                        totalBpm += bpms[i] * duration;
+                                        totalTime += duration;
+                                    }
+                                }
+                                
+                                beatmap.BPM = totalTime > 0 ? totalBpm / totalTime : bpms[0];
+                            }
+                        }
+                        else
+                        {
+                            // Default to a reasonable BPM if we couldn't calculate
+                            beatmap.BPM = 120;
+                        }
                     }
-                    beatmap.BPM = bpm / maxTime;
+                    
+                    // Set the beatmap length from max time of hit objects
+                    beatmap.Length = maxTime;
 
                 }
 
@@ -344,13 +661,26 @@ namespace C4TX.SDL.Services
             }
             catch (Exception ex)
             {
+                _databaseService.AddCorruptedBeatmap(filePath, ex.Message);
                 Console.WriteLine($"Error loading beatmap from file {filePath}: {ex.Message}");
-                return new Beatmap();
+                return null;
             }
         }
 
-        public Beatmap ConvertToFourKeyBeatmap(Beatmap originalBeatmap)
+        public Beatmap? ConvertToFourKeyBeatmap(Beatmap? originalBeatmap)
         {
+            // Handle null case
+            if (originalBeatmap == null)
+                return null;
+                
+            // If the beatmap is already 4K, return as is
+            if (originalBeatmap.KeyCount == 4)
+                return originalBeatmap;
+
+            if (originalBeatmap.KeyCount <= 0 || originalBeatmap.HitObjects == null || originalBeatmap.HitObjects.Count == 0)
+                return null;
+
+            // Create a new beatmap with 4 keys
             var convertedBeatmap = new Beatmap
             {
                 Id = originalBeatmap.Id,
@@ -360,61 +690,49 @@ namespace C4TX.SDL.Services
                 Version = originalBeatmap.Version,
                 AudioFilename = originalBeatmap.AudioFilename,
                 BackgroundFilename = originalBeatmap.BackgroundFilename,
-                KeyCount = 4,
-                Length = originalBeatmap.Length
+                BPM = originalBeatmap.BPM,
+                Length = originalBeatmap.Length,
+                KeyCount = 4, // Forced to 4K
+                HitObjects = new List<HitObject>()
             };
-            
-            // Check if we need to convert or can preserve the original
-            bool preserveColumns = originalBeatmap.KeyCount == 4;
-            
-            // If not 4K, need a Random instance for distribution
-            var rng = preserveColumns ? null : new Random();
-            
-            // Process hit objects
-            foreach (var hitObject in originalBeatmap.HitObjects)
+
+            // Map the original columns to 4 columns
+            int originalKeyCount = originalBeatmap.KeyCount;
+            foreach (var originalNote in originalBeatmap.HitObjects)
             {
-                // Determine column - either keep original (for 4K) or randomize (for other formats)
-                int column = preserveColumns ? 
-                    hitObject.Column : // Keep original column for 4K mania maps
-                    (rng?.Next(0, 4) ?? 0); // Randomize for other maps
-                
-                var convertedHitObject = new HitObject
+                // Map column from original key count to 4 keys
+                int newColumn = (int)Math.Floor(originalNote.Column * 4.0 / originalKeyCount);
+                newColumn = Math.Clamp(newColumn, 0, 3); // Ensure it's between 0-3
+
+                // Create new hit object with mapped column
+                HitObject newNote;
+                if (originalNote.Type == HitObjectType.LongNote)
                 {
-                    StartTime = hitObject.StartTime,
-                    EndTime = hitObject.EndTime,
-                    Type = hitObject.Type,
-                    Column = column
-                };
+                    newNote = new HitObject(originalNote.StartTime, originalNote.EndTime, newColumn);
+                }
+                else
+                {
+                    newNote = new HitObject(originalNote.StartTime, newColumn, HitObjectType.Normal);
+                }
 
-                convertedBeatmap.HitObjects.Add(convertedHitObject);
+                convertedBeatmap.HitObjects.Add(newNote);
             }
-
-            // Sort by start time
-            convertedBeatmap.HitObjects = convertedBeatmap.HitObjects
-                .OrderBy(h => h.StartTime)
-                .ToList();
 
             return convertedBeatmap;
         }
-
-        // Calculate SHA256 hash of a beatmap file for reliable identification
-        public string CalculateBeatmapHash(string beatmapPath)
+        
+        public string CalculateBeatmapHash(string filePath)
         {
+            if (!File.Exists(filePath))
+                return string.Empty;
+                
             try
             {
-                if (!File.Exists(beatmapPath))
+                using (var md5 = MD5.Create())
+                using (var stream = File.OpenRead(filePath))
                 {
-                    Console.WriteLine($"Cannot calculate hash: File not found at {beatmapPath}");
-                    return string.Empty;
-                }
-                
-                using (var sha256 = SHA256.Create())
-                {
-                    using (var stream = File.OpenRead(beatmapPath))
-                    {
-                        var hashBytes = sha256.ComputeHash(stream);
-                        return BitConverter.ToString(hashBytes).Replace("-", "").ToLowerInvariant();
-                    }
+                    var hash = md5.ComputeHash(stream);
+                    return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
                 }
             }
             catch (Exception ex)
@@ -422,6 +740,147 @@ namespace C4TX.SDL.Services
                 Console.WriteLine($"Error calculating beatmap hash: {ex.Message}");
                 return string.Empty;
             }
+        }
+        
+        public void UpdateDifficultyRating(string beatmapId, float rating)
+        {
+            _databaseService.UpdateDifficultyRating(beatmapId, rating);
+        }
+
+        private string CalculateDirectoryHash(string directoryPath)
+        {
+            using (var sha = SHA256.Create())
+            {
+                // Combine all filenames and their last modified dates
+                StringBuilder sb = new StringBuilder();
+                
+                foreach (var file in Directory.GetFiles(directoryPath, "*.*", SearchOption.TopDirectoryOnly))
+                {
+                    try
+                    {
+                        var fileInfo = new FileInfo(file);
+                        sb.Append(fileInfo.Name);
+                        sb.Append(fileInfo.LastWriteTimeUtc.Ticks);
+                    }
+                    catch
+                    {
+                        // Ignore files that can't be accessed
+                    }
+                }
+                
+                byte[] bytes = Encoding.UTF8.GetBytes(sb.ToString());
+                byte[] hash = sha.ComputeHash(bytes);
+                
+                return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant().Substring(0, 16);
+            }
+        }
+
+        // Add method to calculate difficulty rating for a beatmap file
+        private float CalculateDifficultyRating(string beatmapPath)
+        {
+            try
+            {
+                // First check if we have it in memory cache
+                if (_difficultyRatingCache.TryGetValue(beatmapPath, out float cachedRating))
+                {
+                    return cachedRating;
+                }
+                
+                // Next check if we have it in the database
+                string mapHash = CalculateBeatmapHash(beatmapPath);
+                float dbRating = _databaseService.GetCachedDifficultyRating(mapHash);
+                if (dbRating > 0)
+                {
+                    // Store in memory cache and return
+                    _difficultyRatingCache[beatmapPath] = dbRating;
+                    return dbRating;
+                }
+                
+                // Check if the difficulty rating service is available
+                if (_difficultyRatingService == null)
+                {
+                    Console.WriteLine("Warning: DifficultyRatingService is null, cannot calculate difficulty");
+                    return 0;
+                }
+                
+                // Load the beatmap file
+                var beatmap = LoadBeatmapFromFile(beatmapPath);
+                if (beatmap == null)
+                    return 0;
+                
+                // Calculate the difficulty rating
+                float rating = (float)_difficultyRatingService.CalculateDifficulty(beatmap, 1.0);
+                
+                // Cache the result in memory
+                _difficultyRatingCache[beatmapPath] = rating;
+                
+                // Update in database if we have a valid hash
+                if (!string.IsNullOrEmpty(mapHash))
+                {
+                    _databaseService.UpdateDifficultyRating(mapHash, rating);
+                }
+                
+                return rating;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error calculating difficulty rating: {ex.Message}");
+                return 0;
+            }
+        }
+        
+        // Add a method to warm up the difficulty rating cache
+        public void WarmupDifficultyRatingCache(List<BeatmapSet> beatmapSets)
+        {
+            Console.WriteLine("Warming up difficulty rating cache...");
+            
+            // Clear existing cache
+            _difficultyRatingCache.Clear();
+            
+            // Load all cached ratings from database first
+            foreach (var set in beatmapSets)
+            {
+                // Ensure the set has title and artist
+                if (string.IsNullOrEmpty(set.Title) || string.IsNullOrEmpty(set.Artist))
+                {
+                    Console.WriteLine($"Warning: Set {set.Id} missing title or artist");
+                    if (!string.IsNullOrEmpty(set.Name))
+                    {
+                        // Try to parse from directory name if available
+                        var parts = set.Name.Split('-');
+                        if (parts.Length >= 2)
+                        {
+                            set.Artist = parts[0].Trim();
+                            set.Title = parts[1].Trim();
+                        }
+                    }
+                }
+                
+                foreach (var beatmap in set.Beatmaps)
+                {
+                    // Ensure Difficulty property is set
+                    if (string.IsNullOrEmpty(beatmap.Difficulty) && !string.IsNullOrEmpty(beatmap.Version))
+                    {
+                        beatmap.Difficulty = beatmap.Version;
+                    }
+                    
+                    if (!string.IsNullOrEmpty(beatmap.Id))
+                    {
+                        // Check if we have a cached rating in the database
+                        float rating = _databaseService.GetCachedDifficultyRating(beatmap.Id);
+                        
+                        // Add to memory cache if rating exists
+                        if (rating > 0)
+                        {
+                            _difficultyRatingCache[beatmap.Path] = rating;
+                            beatmap.CachedDifficultyRating = rating;
+                            beatmap.DifficultyRating = rating;
+                        }
+                    }
+                }
+            }
+            
+            Console.WriteLine($"Loaded {_difficultyRatingCache.Count} cached difficulty ratings");
         }
     }
 } 

@@ -41,6 +41,13 @@ namespace C4TX.SDL.Models
         public string Title { get; set; } = string.Empty;
         public string Artist { get; set; } = string.Empty;
         public string Path { get; set; } = string.Empty;
+        public string Creator { get; set; } = string.Empty;
+        public string Source { get; set; } = string.Empty;
+        public string Tags { get; set; } = string.Empty;
+        public int PreviewTime { get; set; }
+        public string BackgroundPath { get; set; } = string.Empty;
+        public string DirectoryPath { get; set; } = string.Empty;
+        public string MapPack { get; set; } = string.Empty;
         public List<BeatmapInfo> Beatmaps { get; set; } = new List<BeatmapInfo>();
     }
 
@@ -50,13 +57,14 @@ namespace C4TX.SDL.Models
         public string SetId { get; set; } = string.Empty;
         public string Path { get; set; } = string.Empty;
         public string Difficulty { get; set; } = string.Empty;
-
         public double Length { get; set; } // in milliseconds
         public double BPM { get; set; } // Beats per minute
-
-        // Cached difficulty rating - if null, it needs to be calculated
         public double? CachedDifficultyRating { get; set; } = null;
-        public string Creator { get; set; }
+        public double LastCachedRate { get; set; } = 1.0; // Store the rate at which difficulty was calculated
+        public string Creator { get; set; } = string.Empty;
+        public string AudioFilename { get; set; } = string.Empty;
+        public string Version { get; set; } = string.Empty;
+        public float DifficultyRating { get; set; }
     }
 
     public class HitObject
