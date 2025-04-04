@@ -12,8 +12,8 @@ namespace C4TX.SDL.Services
 {
     public class UpdateService
     {
-        private const string GithubApiUrl = "https://api.github.com/repos/YOUR_USERNAME/C4TX/releases/latest";
-        private const string GithubReleaseUrl = "https://github.com/YOUR_USERNAME/C4TX/releases/latest";
+        private const string GithubApiUrl = "https://api.github.com/repos/leinadix/C4TX/releases/latest";
+        private const string GithubReleaseUrl = "https://github.com/leinadix/C4TX/releases/latest";
         private readonly HttpClient _client;
         
         public string CurrentVersion { get; }

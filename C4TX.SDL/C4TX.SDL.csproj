@@ -7,9 +7,9 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>file.ico</ApplicationIcon>
-    <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0</AssemblyVersion>
-    <FileVersion>1.0.0</FileVersion>
+    <Version>1.0.28</Version>
+    <AssemblyVersion>1.0.28</AssemblyVersion>
+    <FileVersion>1.0.28</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>
