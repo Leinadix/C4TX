@@ -350,6 +350,12 @@ namespace C4TX.SDL.Engine
             {
                 RenderRateIndicator();
             }
+            
+            // Render update notification if available
+            if (GameEngine._showUpdateNotification)
+            {
+                RenderUpdateNotification();
+            }
 
             // Draw FPS counter in top right corner if in menu or gameplay
             if (GameEngine._currentState == GameState.Menu || 
@@ -2688,41 +2694,29 @@ namespace C4TX.SDL.Engine
         // Draw instructions panel at the bottom with fixed key representation
         public static void DrawInstructionPanel(int x, int y, int width, int height)
         {
-            // Draw panel background
-            DrawPanel(x, y, width, height, new SDL_Color { r = 25, g = 25, b = 45, a = 255 }, Color._primaryColor);
-
-            // Draw title
-            RenderText("Controls", x + width / 2, y + PANEL_PADDING, Color._highlightColor, true, true);
-
-            // Draw instructions
-            int instructionY = y + PANEL_PADDING + 30;
-            int lineHeight = 25;
-
-            // Game controls
-            RenderText("ESC: Exit", x + PANEL_PADDING + 10, instructionY, Color._textColor, false, false);
-            instructionY += lineHeight;
-
-            RenderText("Enter: Start Playing", x + PANEL_PADDING + 10, instructionY, Color._textColor, false, false);
-            instructionY += lineHeight;
-
-            RenderText("1 / 2: Adjust Rate", x + PANEL_PADDING + 10, instructionY, Color._textColor, false, false);
-            instructionY += lineHeight;
-
-            RenderText("F: Search Songs", x + PANEL_PADDING + 10, instructionY, Color._textColor, false, false);
-            instructionY += lineHeight;
-
-            RenderText("S: Settings", x + PANEL_PADDING + 10, instructionY, Color._textColor, false, false);
-            instructionY += lineHeight;
-
-            RenderText("F11: Toggle Fullscreen", x + PANEL_PADDING + 10, instructionY, Color._textColor, false, false);
-            instructionY += (int)(lineHeight * 1.5f);
-
-            // Volume controls
-            RenderText("- / +: Volume", x + PANEL_PADDING + 10, instructionY, Color._textColor, false, false);
-            instructionY += (int)(lineHeight * 1.5f);
-
-            // Gameplay controls
-            RenderText("Gameplay: " + GameEngine._keyBindings[0] + " " + GameEngine._keyBindings[1] + " " + GameEngine._keyBindings[2] + " " + GameEngine._keyBindings[3], x + PANEL_PADDING + 10, instructionY, Color._textColor, false, false);
+            // Draw panel
+            DrawPanel(x, y, width, height, new SDL_Color { r = 25, g = 25, b = 35, a = 255 }, Color._primaryColor);
+            
+            // Draw instruction text in a grid
+            int padding = 20;
+            int columnWidth = (width - (3 * padding)) / 2;
+            
+            // Left column
+            int leftX = x + padding;
+            int rightX = x + width - padding - columnWidth;
+            int firstRowY = y + 25;
+            int secondRowY = y + 50;
+            
+            // Key instructions
+            RenderText("↑/↓: Navigate songs", leftX, firstRowY, Color._mutedTextColor, false, false);
+            RenderText("←/→: Select difficulty", leftX, secondRowY, Color._mutedTextColor, false, false);
+            
+            // More instructions on right
+            RenderText("Enter: Play selected song", rightX, firstRowY, Color._mutedTextColor, false, false);
+            
+            // Include version and update check instruction
+            string versionInfo = $"v{GameEngine.Version} | U: Auto-Update";
+            RenderText(versionInfo, rightX, secondRowY, Color._mutedTextColor, false, false);
         }
 
         // Method to render previous scores for a beatmap
@@ -3821,6 +3815,206 @@ namespace C4TX.SDL.Engine
                 {
                     // No results found
                     RenderText("No matching beatmaps found", x + width / 2, resultsY + 40, Color._errorColor, false, true);
+                }
+            }
+        }
+
+        // Render update notification in the corner
+        public static void RenderUpdateNotification()
+        {
+            // Hide notification after duration expires, but keep showing if download is in progress
+            if (!GameEngine._updateDownloading && 
+                GameEngine._currentTime - GameEngine._updateNotificationTime > GameEngine._updateNotificationDuration && 
+                GameEngine._currentState != GameState.Menu)
+            {
+                GameEngine._showUpdateNotification = false;
+                return;
+            }
+            
+            // Calculate position and size for the notification
+            int padding = 10;
+            int height = 40;
+            int notificationWidth = 300;
+            
+            // Position the notification in the bottom right corner
+            int notificationX = _windowWidth - notificationWidth - padding;
+            int notificationY = _windowHeight - height - padding - 50;
+            
+            // Draw notification background - change color based on state
+            SDL_Color notificationColor;
+            
+            if (GameEngine._updateService.IsDownloading)
+            {
+                // Blue when downloading
+                notificationColor = new SDL_Color { r = 50, g = 120, b = 220, a = 230 };
+            }
+            else if (GameEngine._updateService.IsInstalling)
+            {
+                // Purple when installing
+                notificationColor = new SDL_Color { r = 150, g = 50, b = 220, a = 230 };
+            }
+            else
+            {
+                // Green for available update
+                notificationColor = new SDL_Color { r = 100, g = 200, b = 100, a = 230 };
+            }
+            
+            DrawPanel(
+                notificationX,
+                notificationY,
+                notificationWidth,
+                height,
+                notificationColor, 
+                Color._textColor
+            );
+            
+            // Draw notification text
+            string notificationText;
+            
+            if (GameEngine._updateService.IsDownloading)
+            {
+                // Show download progress
+                int progress = (int)(GameEngine._updateService.DownloadProgress * 100);
+                notificationText = $"Downloading update: {progress}%";
+            }
+            else if (GameEngine._updateService.IsInstalling)
+            {
+                notificationText = "Installing update...";
+            }
+            else
+            {
+                notificationText = $"Update available: v{GameEngine._updateService.LatestVersion}";
+            }
+            
+            RenderText(
+                notificationText, 
+                notificationX + notificationWidth / 2,
+                notificationY + height / 2, 
+                Color._textColor,
+                false,
+                true
+            );
+            
+            // If downloading, show progress bar
+            if (GameEngine._updateService.IsDownloading)
+            {
+                int barPadding = 10;
+                int barHeight = 10;
+                int barWidth = notificationWidth - (barPadding * 2);
+                int barX = notificationX + barPadding;
+                int barY = notificationY + height - barHeight - 5;
+                
+                // Draw background
+                SDL_Rect barBg = new SDL_Rect
+                {
+                    x = barX,
+                    y = barY,
+                    w = barWidth,
+                    h = barHeight
+                };
+                
+                SDL_SetRenderDrawColor(_renderer, 50, 50, 50, 200);
+                SDL_RenderFillRect(_renderer, ref barBg);
+                
+                // Draw progress
+                int progressWidth = (int)(barWidth * GameEngine._updateService.DownloadProgress);
+                if (progressWidth > 0)
+                {
+                    SDL_Rect progressRect = new SDL_Rect
+                    {
+                        x = barX,
+                        y = barY,
+                        w = progressWidth,
+                        h = barHeight
+                    };
+                    
+                    SDL_SetRenderDrawColor(_renderer, 220, 220, 255, 255);
+                    SDL_RenderFillRect(_renderer, ref progressRect);
+                }
+                
+                return;
+            }
+            
+            // Add a "Update" button if in menu state and not already downloading/installing
+            if (GameEngine._currentState == GameState.Menu && 
+                !GameEngine._updateService.IsDownloading && 
+                !GameEngine._updateService.IsInstalling)
+            {
+                string actionText = "Update";
+                int actionWidth = 80;
+                int actionHeight = height;
+                
+                // Position for action button
+                int actionX = notificationX + notificationWidth + padding;
+                
+                // Draw action button
+                SDL_Color actionColor = new SDL_Color { r = 60, g = 120, b = 200, a = 230 };
+                DrawPanel(
+                    actionX,
+                    notificationY,
+                    actionWidth,
+                    actionHeight,
+                    actionColor,
+                    Color._textColor
+                );
+                
+                // Draw action text
+                RenderText(
+                    actionText, 
+                    actionX + actionWidth / 2,
+                    notificationY + actionHeight / 2, 
+                    Color._textColor,
+                    false,
+                    true
+                );
+                
+                // Check if action button is clicked
+                int mouseX, mouseY;
+                uint mouseState = SDL_GetMouseState(out mouseX, out mouseY);
+                
+                // Create action button rectangle for hit testing
+                SDL_Rect actionRect = new SDL_Rect
+                {
+                    x = actionX,
+                    y = notificationY,
+                    w = actionWidth,
+                    h = actionHeight
+                };
+                
+                if ((mouseState & 0x1) != 0 && 
+                    mouseX >= actionRect.x && mouseX <= actionRect.x + actionRect.w &&
+                    mouseY >= actionRect.y && mouseY <= actionRect.y + actionRect.h)
+                {
+                    // Start the update installation process
+                    GameEngine._showUpdateNotification = false;
+                    
+                    // Use the same update logic as the U key
+                    Task.Run(async () => 
+                    {
+                        try
+                        {
+                            // Subscribe to progress events
+                            GameEngine._updateService.DownloadProgressChanged += (progress) => 
+                            {
+                                Console.WriteLine($"Download progress: {progress:P0}");
+                            };
+                            
+                            // Subscribe to completion events
+                            GameEngine._updateService.UpdateCompleted += (success, message) => 
+                            {
+                                Console.WriteLine(message);
+                                GameEngine._updateDownloading = false;
+                            };
+                            
+                            GameEngine._updateDownloading = true;
+                            await GameEngine._updateService.DownloadAndInstallUpdateAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Update installation error: {ex.Message}");
+                            GameEngine._updateDownloading = false;
+                        }
+                    });
                 }
             }
         }

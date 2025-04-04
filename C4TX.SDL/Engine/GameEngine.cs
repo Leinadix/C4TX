@@ -7,6 +7,7 @@ using System.Diagnostics;
 using static SDL2.SDL;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Reflection;
 
 namespace C4TX.SDL.Engine
 {
@@ -14,6 +15,16 @@ namespace C4TX.SDL.Engine
     {
         // SDL constants
         private const int SDL_TEXTINPUTEVENT_TEXT_SIZE = 32;
+        
+        // Version info
+        public static string Version => Assembly.GetExecutingAssembly().GetName().Version.ToString();
+        public static UpdateService _updateService;
+        public static bool _updateAvailable = false;
+        public static bool _showUpdateNotification = false;
+        public static bool _checkingForUpdates = false;
+        public static bool _updateDownloading = false;
+        public static double _updateNotificationTime = 0;
+        public static double _updateNotificationDuration = 5000; // Display for 5 seconds
         
         public static BeatmapService _beatmapService;
         public static ScoreService _scoreService;
@@ -184,6 +195,9 @@ namespace C4TX.SDL.Engine
             _gameTimer = new Stopwatch();
             _availableBeatmapSets = new List<BeatmapSet>();
 
+            // Initialize update service
+            _updateService = new UpdateService();
+            
             // Load settings or use defaults
             LoadSettings();
 
@@ -467,6 +481,37 @@ namespace C4TX.SDL.Engine
         {
             // Start the game timer
             _gameTimer = Stopwatch.StartNew();
+            
+            // Display version information
+            Console.WriteLine($"C4TX SDL Version: {Version}");
+            
+            // Check for updates in background
+            _checkingForUpdates = true;
+            Task.Run(async () =>
+            {
+                try
+                {
+                    _updateAvailable = await _updateService.CheckForUpdatesAsync();
+                    if (_updateAvailable)
+                    {
+                        Console.WriteLine($"Update available: {_updateService.LatestVersion} (current: {_updateService.CurrentVersion})");
+                        _showUpdateNotification = true;
+                        _updateNotificationTime = _gameTimer.ElapsedMilliseconds;
+                    }
+                    else
+                    {
+                        Console.WriteLine("No updates available");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error checking for updates: {ex.Message}");
+                }
+                finally
+                {
+                    _checkingForUpdates = false;
+                }
+            });
             
             // Check for authenticated profiles on startup
             foreach (var profile in _availableProfiles)

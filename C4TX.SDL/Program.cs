@@ -9,6 +9,10 @@ namespace C4TX.SDL
         static void Main(string[] args)
         {
             Console.WriteLine("C4TX SDL - 4K Rhythm Game");
+            
+            // Display version information
+            string version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
+            Console.WriteLine($"Version: {version}");
             Console.WriteLine("Loading...");
             
             // First, ensure SDL2 native libraries are in the PATH

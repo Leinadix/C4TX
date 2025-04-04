@@ -22,6 +22,87 @@ namespace C4TX.SDL.Engine
                 return;
             }
             
+            // Handle update notification - U key to check for updates or view available update
+            if (scancode == SDL_Scancode.SDL_SCANCODE_U)
+            {
+                if (_updateAvailable && !_updateService.IsDownloading && !_updateService.IsInstalling)
+                {
+                    // Start the update download and installation process
+                    Console.WriteLine("Starting update installation...");
+                    _showUpdateNotification = false;
+                    
+                    // Show download progress dialog
+                    Task.Run(async () => 
+                    {
+                        try
+                        {
+                            // Subscribe to progress events
+                            _updateService.DownloadProgressChanged += (progress) => 
+                            {
+                                Console.WriteLine($"Download progress: {progress:P0}");
+                            };
+                            
+                            // Subscribe to completion events
+                            _updateService.UpdateCompleted += (success, message) => 
+                            {
+                                Console.WriteLine(message);
+                                _updateDownloading = false;
+                            };
+                            
+                            _updateDownloading = true;
+                            await _updateService.DownloadAndInstallUpdateAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Update installation error: {ex.Message}");
+                            _updateDownloading = false;
+                        }
+                    });
+                }
+                else if (_updateService.IsDownloading)
+                {
+                    // Update already in progress, do nothing
+                    Console.WriteLine("Update download already in progress");
+                }
+                else if (_updateService.IsInstalling)
+                {
+                    // Installation already in progress, do nothing
+                    Console.WriteLine("Update installation already in progress");
+                }
+                else
+                {
+                    // Check for updates
+                    Console.WriteLine("Checking for updates...");
+                    _checkingForUpdates = true;
+                    Task.Run(async () =>
+                    {
+                        try
+                        {
+                            _updateAvailable = await _updateService.CheckForUpdatesAsync();
+                            if (_updateAvailable)
+                            {
+                                Console.WriteLine($"Update available: {_updateService.LatestVersion} (current: {_updateService.CurrentVersion})");
+                                _showUpdateNotification = true;
+                                _updateNotificationTime = _gameTimer.ElapsedMilliseconds;
+                            }
+                            else
+                            {
+                                Console.WriteLine("No updates available");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"Error checking for updates: {ex.Message}");
+                        }
+                        finally
+                        {
+                            _checkingForUpdates = false;
+                        }
+                    });
+                }
+                return;
+            }
+            
             // Exit to desktop
             if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
             {
