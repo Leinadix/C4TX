@@ -1,15 +1,16 @@
 ﻿using C4TX.SDL.Models;
 using static SDL2.SDL;
 using static C4TX.SDL.Engine.GameEngine;
+using C4TX.SDL.Engine.Renderer;
 
-namespace C4TX.SDL.Engine
+namespace C4TX.SDL.KeyHandler
 {
     public class SettingsKeyhandler
     {
         // Flag to track which key is being bound
         public static bool _isBindingKey = false;
         public static int _currentKeyBindIndex = -1;
-        
+
         public static void HandleSettingsKeys(SDL_Scancode scancode)
         {
             // If we're in key binding mode, handle key binding
@@ -17,13 +18,13 @@ namespace C4TX.SDL.Engine
             {
                 // Set the keybinding to the pressed key
                 _keyBindings[_currentKeyBindIndex] = scancode;
-                
+
                 // Exit key binding mode
                 _isBindingKey = false;
                 _currentKeyBindIndex = -1;
                 return;
             }
-            
+
             // Handle settings menu key presses
             if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
             {
@@ -38,21 +39,21 @@ namespace C4TX.SDL.Engine
                 SaveSettings();
                 _previousState = _currentState;
                 _currentState = GameState.Menu;
-                RenderEngine.RecalculatePlayfield(RenderEngine._windowWidth, RenderEngine._windowHeight);
+                Engine.Renderer.RenderEngine.RecalculatePlayfield(Engine.Renderer.RenderEngine._windowWidth, Engine.Renderer.RenderEngine._windowHeight);
                 return;
             }
 
             if (scancode == SDL_Scancode.SDL_SCANCODE_UP)
             {
                 // Move to previous setting
-                _currentSettingIndex = (_currentSettingIndex > 0) ? _currentSettingIndex - 1 : 0;
+                _currentSettingIndex = _currentSettingIndex > 0 ? _currentSettingIndex - 1 : 0;
                 return;
             }
 
             if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
             {
                 // Move to next setting
-                _currentSettingIndex = (_currentSettingIndex < 12) ? _currentSettingIndex + 1 : 12;
+                _currentSettingIndex = _currentSettingIndex < 12 ? _currentSettingIndex + 1 : 12;
                 return;
             }
 
@@ -78,7 +79,7 @@ namespace C4TX.SDL.Engine
                         break;
                     case 5: // Note Shape
                         // Cycle to previous shape
-                        _noteShape = (NoteShape)((_noteShape == 0) ?
+                        _noteShape = (NoteShape)(_noteShape == 0 ?
                         (int)NoteShape.Arrow : (int)_noteShape - 1);
                         break;
                     case 6: // Skin
@@ -91,7 +92,7 @@ namespace C4TX.SDL.Engine
                         // Cycle to previous skin
                         if (_availableSkins.Count > 0)
                         {
-                            _selectedSkinIndex = (_selectedSkinIndex > 0) ?
+                            _selectedSkinIndex = _selectedSkinIndex > 0 ?
                             _selectedSkinIndex - 1 : _availableSkins.Count - 1;
                             _selectedSkin = _availableSkins[_selectedSkinIndex].Name;
 
@@ -112,7 +113,7 @@ namespace C4TX.SDL.Engine
                     case 7: // Accuracy Model
                         // Cycle to previous model
                         int modelCount = Enum.GetValues(typeof(AccuracyModel)).Length;
-                        _accuracyModel = (AccuracyModel)((_accuracyModel == 0) ?
+                        _accuracyModel = (AccuracyModel)(_accuracyModel == 0 ?
                         modelCount - 1 : (int)_accuracyModel - 1);
                         break;
                     case 8: // Show Lane Seperator
@@ -152,7 +153,7 @@ namespace C4TX.SDL.Engine
                         break;
                     case 5: // Note Shape
                         // Cycle to next shape
-                        _noteShape = (NoteShape)(((int)_noteShape == (int)NoteShape.Arrow) ? 0 : (int)_noteShape + 1);
+                        _noteShape = (NoteShape)((int)_noteShape == (int)NoteShape.Arrow ? 0 : (int)_noteShape + 1);
                         break;
                     case 6: // Skin
                         // Get available skins if not already loaded
@@ -164,8 +165,8 @@ namespace C4TX.SDL.Engine
                         // Cycle to next skin
                         if (_availableSkins.Count > 0)
                         {
-                                _selectedSkinIndex = (_selectedSkinIndex + 1) % _availableSkins.Count;
-                                _selectedSkin = _availableSkins[_selectedSkinIndex].Name;
+                            _selectedSkinIndex = (_selectedSkinIndex + 1) % _availableSkins.Count;
+                            _selectedSkin = _availableSkins[_selectedSkinIndex].Name;
 
                             // Immediately load the selected skin textures
                             if (_skinService != null && _selectedSkin != "Default")

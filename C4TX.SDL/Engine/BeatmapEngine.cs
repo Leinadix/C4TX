@@ -1,4 +1,5 @@
-﻿using C4TX.SDL.Models;
+﻿using C4TX.SDL.Engine.Renderer;
+using C4TX.SDL.Models;
 using C4TX.SDL.Services;
 using static C4TX.SDL.Engine.GameEngine;
 using static SDL2.SDL;
@@ -303,7 +304,7 @@ namespace C4TX.SDL.Engine
                             
                             // Show loading animation with current beatmap info
                             string loadingText = $"Calculating difficulty for {set.Title} - {info.Difficulty} ({progress}%)";
-                            RenderEngine.RenderLoadingAnimation(loadingText, processedBeatmaps, beatmapsNeedingCalculation);
+                            Renderer.RenderEngine.RenderLoadingAnimation(loadingText, processedBeatmaps, beatmapsNeedingCalculation);
                             
                             try
                             {
@@ -370,7 +371,7 @@ namespace C4TX.SDL.Engine
 
                 // Show a final "Completed" loading screen
                 string finalMessage = $"Loaded {totalBeatmaps} beatmaps in {_availableBeatmapSets.Count} sets";
-                RenderEngine.RenderLoadingAnimation(finalMessage, totalBeatmaps, totalBeatmaps);
+                Renderer.RenderEngine.RenderLoadingAnimation(finalMessage, totalBeatmaps, totalBeatmaps);
                 
                 // Load first beatmap by default if available (for preview in the menu)
                 if (_availableBeatmapSets.Count > 0 && _availableBeatmapSets[0].Beatmaps.Count > 0)

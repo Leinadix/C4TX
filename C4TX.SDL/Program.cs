@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 using C4TX.SDL.Engine;
+using C4TX.SDL.Engine.Renderer;
 
 namespace C4TX.SDL
 {
@@ -26,14 +27,14 @@ namespace C4TX.SDL
                     Console.WriteLine("Failed to initialize SDL. Exiting.");
                     return;
                 }
-                
+
                 // Show initial loading screen
-                RenderEngine.RenderLoadingAnimation("Initializing...");
+                Engine.Renderer.RenderEngine.RenderLoadingAnimation("Initializing...");
                 
                 Console.WriteLine("Scanning for beatmaps...");
-                
+
                 // Show loading animation while scanning for beatmaps
-                RenderEngine.RenderLoadingAnimation("Scanning for beatmaps...");
+                Engine.Renderer.RenderEngine.RenderLoadingAnimation("Scanning for beatmaps...");
                 
                 // Scan for beatmaps (this will show loading animation during processing)
                 BeatmapEngine.ScanForBeatmaps();
@@ -46,7 +47,7 @@ namespace C4TX.SDL
 
                 GameEngine._currentState = GameEngine.GameState.ProfileSelect;
 
-                RenderEngine.ToggleFullscreen();
+                Engine.Renderer.RenderEngine.ToggleFullscreen();
                 
                 // Remove the automatic game start
                 // The game will now start in menu mode

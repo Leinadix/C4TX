@@ -2,7 +2,7 @@
 using static C4TX.SDL.Engine.GameEngine;
 using static SDL2.SDL;
 
-namespace C4TX.SDL.Engine
+namespace C4TX.SDL.KeyHandler
 {
     public class ResultsKeyhandler
     {
@@ -20,7 +20,7 @@ namespace C4TX.SDL.Engine
             {
                 // Cycle to previous accuracy model
                 int modelCount = Enum.GetValues(typeof(AccuracyModel)).Length;
-                _resultScreenAccuracyModel = (AccuracyModel)((_resultScreenAccuracyModel == 0) ?
+                _resultScreenAccuracyModel = (AccuracyModel)(_resultScreenAccuracyModel == 0 ?
                     modelCount - 1 : (int)_resultScreenAccuracyModel - 1);
             }
             else if (scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)

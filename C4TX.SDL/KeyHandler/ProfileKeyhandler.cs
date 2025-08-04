@@ -6,7 +6,7 @@ using static C4TX.SDL.Engine.GameEngine;
 using static SDL2.SDL;
 using static C4TX.SDL.Services.ProfileService;
 
-namespace C4TX.SDL.Engine
+namespace C4TX.SDL.KeyHandler
 {
     public class ProfileKeyhandler
     {
@@ -18,14 +18,14 @@ namespace C4TX.SDL.Engine
                 HandleProfileCreationKeys(scancode);
                 return;
             }
-            
+
             // Profile login mode
             if (_isLoggingIn)
             {
                 HandleProfileLoginKeys(scancode);
                 return;
             }
-            
+
             // Profile deletion confirmation mode
             if (_isDeletingProfile)
             {
@@ -39,21 +39,21 @@ namespace C4TX.SDL.Engine
                 case SDL_Scancode.SDL_SCANCODE_UP:
                     if (_availableProfiles.Count > 0)
                     {
-                        _selectedProfileIndex = (_selectedProfileIndex > 0) 
-                            ? _selectedProfileIndex - 1 
+                        _selectedProfileIndex = _selectedProfileIndex > 0
+                            ? _selectedProfileIndex - 1
                             : 0;
                     }
                     break;
-                    
+
                 case SDL_Scancode.SDL_SCANCODE_DOWN:
                     if (_availableProfiles.Count > 0)
                     {
-                        _selectedProfileIndex = (_selectedProfileIndex < _availableProfiles.Count - 1) 
-                            ? _selectedProfileIndex + 1 
+                        _selectedProfileIndex = _selectedProfileIndex < _availableProfiles.Count - 1
+                            ? _selectedProfileIndex + 1
                             : _availableProfiles.Count - 1;
                     }
                     break;
-                    
+
                 case SDL_Scancode.SDL_SCANCODE_N:
                     // Start creating a new profile
                     _isCreatingProfile = true;
@@ -65,7 +65,7 @@ namespace C4TX.SDL.Engine
                     _authError = "";
                     _loginInputFocus = "username";
                     break;
-                    
+
                 case SDL_Scancode.SDL_SCANCODE_L:
                     // Start logging in with an existing profile
                     if (_availableProfiles.Count > 0 && _selectedProfileIndex >= 0 && _selectedProfileIndex < _availableProfiles.Count)
@@ -77,17 +77,17 @@ namespace C4TX.SDL.Engine
                         _loginInputFocus = "email";
                     }
                     break;
-                    
+
                 case SDL_Scancode.SDL_SCANCODE_R:
                     // Reauthorize the selected profile (force login even if already authenticated)
                     if (_availableProfiles.Count > 0 && _selectedProfileIndex >= 0 && _selectedProfileIndex < _availableProfiles.Count)
                     {
                         Profile selectedProfile = _availableProfiles[_selectedProfileIndex];
-                        
+
                         // Clear authentication status
                         selectedProfile.IsAuthenticated = false;
                         _profileService.SaveProfile(selectedProfile);
-                        
+
                         // Start login process
                         _isLoggingIn = true;
                         _email = selectedProfile.Email;
@@ -96,7 +96,7 @@ namespace C4TX.SDL.Engine
                         _loginInputFocus = "email";
                     }
                     break;
-                    
+
                 case SDL_Scancode.SDL_SCANCODE_DELETE:
                     // Confirm deletion of selected profile
                     if (_availableProfiles.Count > 0 && _selectedProfileIndex >= 0 && _selectedProfileIndex < _availableProfiles.Count)
@@ -104,28 +104,28 @@ namespace C4TX.SDL.Engine
                         _isDeletingProfile = true;
                     }
                     break;
-                    
+
                 case SDL_Scancode.SDL_SCANCODE_RETURN:
                     // Select the profile and proceed to menu
                     if (_availableProfiles.Count > 0 && _selectedProfileIndex >= 0 && _selectedProfileIndex < _availableProfiles.Count)
                     {
                         Profile selectedProfile = _availableProfiles[_selectedProfileIndex];
                         _username = selectedProfile.Username;
-                        
+
                         // If profile has API key stored, authenticate and proceed
                         if (!string.IsNullOrEmpty(selectedProfile.ApiKey))
                         {
                             // Mark profile as authenticated
                             selectedProfile.IsAuthenticated = true;
                             _profileService.SaveProfile(selectedProfile);
-                            
+
                             // Load settings for the selected profile
                             LoadSettings();
-                            
+
                             // Update profile's last played date
                             selectedProfile.LastPlayedDate = DateTime.Now;
                             _profileService.SaveProfile(selectedProfile);
-                            
+
                             // Switch to menu state
                             _currentState = GameState.Menu;
                         }
@@ -142,7 +142,7 @@ namespace C4TX.SDL.Engine
                     break;
             }
         }
-        
+
         private static void HandleProfileCreationKeys(SDL_Scancode scancode)
         {
             // Handle Tab to switch input focus
@@ -162,14 +162,14 @@ namespace C4TX.SDL.Engine
                 }
                 return;
             }
-            
+
             // Escape to cancel profile creation
             if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
             {
                 _isCreatingProfile = false;
                 return;
             }
-            
+
             // Backspace to delete characters
             if (scancode == SDL_Scancode.SDL_SCANCODE_BACKSPACE)
             {
@@ -190,7 +190,7 @@ namespace C4TX.SDL.Engine
                 }
                 return;
             }
-            
+
             // Enter to confirm new profile
             if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
             {
@@ -200,67 +200,67 @@ namespace C4TX.SDL.Engine
                     _profileNameError = "Username cannot be empty";
                     return;
                 }
-                
+
                 if (_username.Length < 3)
                 {
                     _isProfileNameInvalid = true;
                     _profileNameError = "Username must be at least 3 characters";
                     return;
                 }
-                
+
                 if (string.IsNullOrWhiteSpace(_email))
                 {
                     _authError = "Email cannot be empty";
                     return;
                 }
-                
+
                 if (string.IsNullOrWhiteSpace(_password))
                 {
                     _authError = "Password cannot be empty";
                     return;
                 }
-                
+
                 if (_password.Length < 6)
                 {
                     _authError = "Password must be at least 6 characters";
                     return;
                 }
-                
+
                 AuthenticateAndCreateProfile();
                 return;
             }
-            
+
             // We don't handle regular key input here anymore
             // as we'll use SDL_TextInput events to ensure keyboard layout awareness
         }
-        
+
         private static async void AuthenticateAndCreateProfile()
         {
             _isAuthenticating = true;
             _authError = "";
-            
+
             try
             {
                 // Attempt to login
                 var (loginSuccess, loginMessage, token) = await _apiService.LoginAsync(_email, _password);
-                
+
                 if (!loginSuccess || string.IsNullOrEmpty(token))
                 {
                     _authError = loginMessage;
                     _isAuthenticating = false;
                     return;
                 }
-                
+
                 // Get API key
                 var (apiKeySuccess, apiKeyMessage, apiKey) = await _apiService.GetApiKeyAsync(token);
-                
+
                 if (!apiKeySuccess || string.IsNullOrEmpty(apiKey))
                 {
                     _authError = apiKeyMessage;
                     _isAuthenticating = false;
                     return;
                 }
-                
+
                 // Create the new profile with auth info
                 try
                 {
@@ -269,24 +269,24 @@ namespace C4TX.SDL.Engine
                     newProfile.Password = _password; // Note: In a real app, you'd want to store this securely
                     newProfile.ApiKey = apiKey;
                     newProfile.IsAuthenticated = true;
-                    
+
                     // Save the updated profile
                     _profileService.SaveProfile(newProfile);
-                    
+
                     // Refresh the profiles list
                     _availableProfiles = _profileService.GetAllProfiles();
-                    
+
                     // Select the newly created profile
                     _selectedProfileIndex = _availableProfiles.FindIndex(p => p.Username == newProfile.Username);
-                    
+
                     // Exit profile creation mode
                     _isCreatingProfile = false;
                     _isProfileNameInvalid = false;
                     _profileNameError = "";
-                    
+
                     // Load settings for this profile
                     LoadSettings();
-                    
+
                     // Switch to menu
                     _currentState = GameState.Menu;
                 }
@@ -300,10 +300,10 @@ namespace C4TX.SDL.Engine
             {
                 _authError = $"Authentication error: {ex.Message}";
             }
-            
+
             _isAuthenticating = false;
         }
-        
+
         private static void HandleProfileLoginKeys(SDL_Scancode scancode)
         {
             // Handle Tab to switch input focus
@@ -312,14 +312,14 @@ namespace C4TX.SDL.Engine
                 _loginInputFocus = _loginInputFocus == "email" ? "password" : "email";
                 return;
             }
-            
+
             // Escape to cancel login
             if (scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
             {
                 _isLoggingIn = false;
                 return;
             }
-            
+
             // Backspace to delete characters
             if (scancode == SDL_Scancode.SDL_SCANCODE_BACKSPACE)
             {
@@ -333,7 +333,7 @@ namespace C4TX.SDL.Engine
                 }
                 return;
             }
-            
+
             // Enter to confirm login
             if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
             {
@@ -342,21 +342,22 @@ namespace C4TX.SDL.Engine
                     _authError = "Email cannot be empty";
                     return;
                 }
-                
+
                 if (string.IsNullOrWhiteSpace(_password))
                 {
                     _authError = "Password cannot be empty";
                     return;
                 }
-                
+
                 // Set authenticating state
                 _isAuthenticating = true;
                 _authError = "Authenticating...";
-                
+
                 // Call the authentication method asynchronously
-                Task.Run(async () => {
-                    bool success = await ProfileService.AuthenticateExistingProfile();
-                    
+                Task.Run(async () =>
+                {
+                    bool success = await AuthenticateExistingProfile();
+
                     // If authentication failed, make sure to reset the authenticating state
                     if (!success)
                     {
@@ -366,11 +367,11 @@ namespace C4TX.SDL.Engine
                 });
                 return;
             }
-            
+
             // We don't handle regular key input here anymore
             // as we'll use SDL_TextInput events to ensure keyboard layout awareness
         }
-        
+
         private static void HandleProfileDeletionKeys(SDL_Scancode scancode)
         {
             // Y to confirm deletion
@@ -379,15 +380,15 @@ namespace C4TX.SDL.Engine
                 if (_availableProfiles.Count > 0 && _selectedProfileIndex >= 0 && _selectedProfileIndex < _availableProfiles.Count)
                 {
                     string usernameToDelete = _availableProfiles[_selectedProfileIndex].Username;
-                    
+
                     // Delete the profile
                     bool deleted = _profileService.DeleteProfile(usernameToDelete);
-                    
+
                     if (deleted)
                     {
                         // Refresh the profiles list
                         _availableProfiles = _profileService.GetAllProfiles();
-                        
+
                         // Adjust selected index if needed
                         if (_selectedProfileIndex >= _availableProfiles.Count)
                         {
@@ -395,11 +396,11 @@ namespace C4TX.SDL.Engine
                         }
                     }
                 }
-                
+
                 _isDeletingProfile = false;
                 return;
             }
-            
+
             // N or Escape to cancel deletion
             if (scancode == SDL_Scancode.SDL_SCANCODE_N || scancode == SDL_Scancode.SDL_SCANCODE_ESCAPE)
             {
@@ -407,7 +408,7 @@ namespace C4TX.SDL.Engine
                 return;
             }
         }
-        
+
         // Helper method to process text input events for this handler
         // This should be called from GameEngine's HandleTextInput method
         public static void ProcessTextInput(string text)
@@ -415,7 +416,7 @@ namespace C4TX.SDL.Engine
             // Only process text input when in profile mode
             if (_currentState != GameState.ProfileSelect)
                 return;
-                
+
             // Add the text to the appropriate field
             if (_isCreatingProfile)
             {
@@ -447,4 +448,4 @@ namespace C4TX.SDL.Engine
             }
         }
     }
-} 
+}

@@ -8,6 +8,8 @@ using static SDL2.SDL;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Reflection;
+using C4TX.SDL.KeyHandler;
+using C4TX.SDL.Engine.Renderer;
 
 namespace C4TX.SDL.Engine
 {
@@ -17,7 +19,7 @@ namespace C4TX.SDL.Engine
         private const int SDL_TEXTINPUTEVENT_TEXT_SIZE = 32;
         
         // Version info
-        public static string Version => Assembly.GetExecutingAssembly().GetName().Version.ToString();
+        public static string Version => Assembly.GetExecutingAssembly().GetName().Version!.ToString();
         public static UpdateService _updateService;
         public static bool _updateAvailable = false;
         public static bool _showUpdateNotification = false;
@@ -205,7 +207,7 @@ namespace C4TX.SDL.Engine
             _noteSpeed = _noteSpeedSetting / 1000.0; // Convert to percentage per millisecond
 
             // Initialize playfield layout
-            RenderEngine.InitializePlayfield();
+            Renderer.RenderEngine.InitializePlayfield();
 
             AudioEngine.InitializeAudioPlayer();
         }
@@ -244,23 +246,23 @@ namespace C4TX.SDL.Engine
                 return false;
             }
 
-            RenderEngine._window = SDL_CreateWindow("C4TX",
+            Renderer.RenderEngine._window = SDL_CreateWindow("C4TX",
                                       SDL_WINDOWPOS_UNDEFINED,
                                       SDL_WINDOWPOS_UNDEFINED,
-                                      RenderEngine._windowWidth,
-                                      RenderEngine._windowHeight,
+                                      Renderer.RenderEngine._windowWidth,
+                                      Renderer.RenderEngine._windowHeight,
                                       SDL_WindowFlags.SDL_WINDOW_SHOWN);
 
-            if (RenderEngine._window == IntPtr.Zero)
+            if (Renderer.RenderEngine._window == IntPtr.Zero)
             {
                 Console.WriteLine($"Window could not be created! SDL_Error: {SDL_GetError()}");
                 return false;
             }
 
-            RenderEngine._renderer = SDL_CreateRenderer(RenderEngine._window, -1,
+            Renderer.RenderEngine._renderer = SDL_CreateRenderer(Renderer.RenderEngine._window, -1,
                 SDL_RendererFlags.SDL_RENDERER_ACCELERATED | SDL_RendererFlags.SDL_RENDERER_PRESENTVSYNC);
 
-            if (RenderEngine._renderer == IntPtr.Zero)
+            if (Renderer.RenderEngine._renderer == IntPtr.Zero)
             {
                 Console.WriteLine($"Renderer could not be created! SDL_Error: {SDL_GetError()}");
                 return false;
@@ -270,12 +272,12 @@ namespace C4TX.SDL.Engine
             InitializeSkinService();
 
             // Try to load a font
-            if (!RenderEngine.LoadFonts())
+            if (!Renderer.RenderEngine.LoadFonts())
             {
                 Console.WriteLine("Warning: Could not load fonts. Text rendering will be disabled.");
             }
 
-            RenderEngine._isRunning = true;
+            Renderer.RenderEngine._isRunning = true;
             return true;
         }
 
@@ -284,7 +286,7 @@ namespace C4TX.SDL.Engine
         {
             try
             {
-                _skinService = new SkinService(RenderEngine._renderer);
+                _skinService = new SkinService(Renderer.RenderEngine._renderer);
                 Console.WriteLine("Skin service initialized");
             }
             catch (Exception ex)
@@ -523,7 +525,7 @@ namespace C4TX.SDL.Engine
                 }
             }
             
-            while (RenderEngine._isRunning)
+            while (Renderer.RenderEngine._isRunning)
             {
                 // Update timing
                 _currentTime = _gameTimer.ElapsedMilliseconds;
@@ -535,7 +537,7 @@ namespace C4TX.SDL.Engine
                 {
                     if (e.type == SDL_EventType.SDL_QUIT)
                     {
-                        RenderEngine._isRunning = false;
+                        Renderer.RenderEngine._isRunning = false;
                     }
                     else if (e.type == SDL_EventType.SDL_KEYDOWN)
                     {
@@ -571,7 +573,7 @@ namespace C4TX.SDL.Engine
                 // Update game state
                 Update();
 
-                RenderEngine.Render();
+                Renderer.RenderEngine.Render();
 
                 // Small delay to not hog CPU
                 SDL_Delay(1);
@@ -591,7 +593,7 @@ namespace C4TX.SDL.Engine
             // Handle F11 for fullscreen toggle (works in any state)
             if (scancode == SDL_Scancode.SDL_SCANCODE_F11)
             {
-                RenderEngine.ToggleFullscreen();
+                Renderer.RenderEngine.ToggleFullscreen();
                 return;
             }
 
@@ -857,7 +859,7 @@ namespace C4TX.SDL.Engine
                 if (_currentBeatmap != null)
                 {
                     // Add notes that are within the visible time window to the active notes list
-                    double visibleTimeWindow = _noteFallDistance / (_noteSpeed * RenderEngine._windowHeight);
+                    double visibleTimeWindow = _noteFallDistance / (_noteSpeed * Renderer.RenderEngine._windowHeight);
 
                     foreach (var hitObject in _currentBeatmap.HitObjects)
                     {
@@ -1021,59 +1023,59 @@ namespace C4TX.SDL.Engine
         public void Dispose()
         {
             // Clean up SDL resources
-            if (RenderEngine._renderer != IntPtr.Zero)
+            if (Renderer.RenderEngine._renderer != IntPtr.Zero)
             {
-                SDL_DestroyRenderer(RenderEngine._renderer);
-                RenderEngine._renderer = IntPtr.Zero;
+                SDL_DestroyRenderer(Renderer.RenderEngine._renderer);
+                Renderer.RenderEngine._renderer = IntPtr.Zero;
             }
 
-            if (RenderEngine._window != IntPtr.Zero)
+            if (Renderer.RenderEngine._window != IntPtr.Zero)
             {
-                SDL_DestroyWindow(RenderEngine._window);
-                RenderEngine._window = IntPtr.Zero;
+                SDL_DestroyWindow(Renderer.RenderEngine._window);
+                Renderer.RenderEngine._window = IntPtr.Zero;
             }
 
             // Clean up textures
-            foreach (var texture in RenderEngine._textures.Values)
+            foreach (var texture in Renderer.RenderEngine._textures.Values)
             {
                 if (texture != IntPtr.Zero)
                 {
                     SDL_DestroyTexture(texture);
                 }
             }
-            RenderEngine._textures.Clear();
+            Renderer.RenderEngine._textures.Clear();
 
             // Clean up text textures
-            foreach (var texture in RenderEngine._textTextures.Values)
+            foreach (var texture in Renderer.RenderEngine._textTextures.Values)
             {
                 if (texture != IntPtr.Zero)
                 {
                     SDL_DestroyTexture(texture);
                 }
             }
-            RenderEngine._textTextures.Clear();
+            Renderer.RenderEngine._textTextures.Clear();
             
             // Clean up background textures
-            foreach (var texture in RenderEngine._backgroundTextures.Values)
+            foreach (var texture in Renderer.RenderEngine._backgroundTextures.Values)
             {
                 if (texture != IntPtr.Zero)
                 {
                     SDL_DestroyTexture(texture);
                 }
             }
-            RenderEngine._backgroundTextures.Clear();
+            Renderer.RenderEngine._backgroundTextures.Clear();
 
             // Clean up fonts
-            if (RenderEngine._font != IntPtr.Zero)
+            if (Renderer.RenderEngine._font != IntPtr.Zero)
             {
-                SDL_ttf.TTF_CloseFont(RenderEngine._font);
-                RenderEngine._font = IntPtr.Zero;
+                SDL_ttf.TTF_CloseFont(Renderer.RenderEngine._font);
+                Renderer.RenderEngine._font = IntPtr.Zero;
             }
 
-            if (RenderEngine._largeFont != IntPtr.Zero)
+            if (Renderer.RenderEngine._largeFont != IntPtr.Zero)
             {
-                SDL_ttf.TTF_CloseFont(RenderEngine._largeFont);
-                RenderEngine._largeFont = IntPtr.Zero;
+                SDL_ttf.TTF_CloseFont(Renderer.RenderEngine._largeFont);
+                Renderer.RenderEngine._largeFont = IntPtr.Zero;
             }
 
             // Clean up audio
@@ -1149,9 +1151,9 @@ namespace C4TX.SDL.Engine
             // Set accuracy model
             _accuracyService.SetModel(_accuracyModel);
             _accuracyService.SetHitWindow(_hitWindowMs);
-            
+
             // Recalculate playfield if needed
-            RenderEngine.InitializePlayfield();
+            Renderer.RenderEngine.InitializePlayfield();
             
             // Check profile authentication
             Profile? profile = _profileService.GetProfile(_username);
