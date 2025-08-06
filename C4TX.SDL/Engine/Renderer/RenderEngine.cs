@@ -1,7 +1,8 @@
 ﻿using C4TX.SDL.KeyHandler;
 using C4TX.SDL.Models;
 using C4TX.SDL.Services;
-using SDL2;
+using Clay_cs;
+using SDL;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,21 +10,23 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using static C4TX.SDL.Engine.GameEngine;
-using static SDL2.SDL;
+using static SDL.SDL3;
 using static System.Formats.Asn1.AsnWriter;
 
 namespace C4TX.SDL.Engine.Renderer
 {
     public partial class RenderEngine
     {
-        public static void Render()
+        public static unsafe void Render()
         {
             // Begin frame timing
             double frameStartTime = SDL_GetTicks();
 
+            if (_currentState != GameState.Playing) Clay.BeginLayout();
+
             // Clear screen with background color
-            SDL_SetRenderDrawColor(_renderer, Color._bgColor.r, Color._bgColor.g, Color._bgColor.b, Color._bgColor.a);
-            SDL_RenderClear(_renderer);
+            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._bgColor.r, Color._bgColor.g, Color._bgColor.b, Color._bgColor.a);
+            SDL_RenderClear((SDL_Renderer*)_renderer);
 
             // Render different content based on game state
             switch (_currentState)
@@ -75,8 +78,16 @@ namespace C4TX.SDL.Engine.Renderer
                 DrawFpsCounter();
             }
 
+            if (_currentState != GameState.Playing)
+            {
+
+                var commands = Clay.EndLayout();
+
+                ClaySDL.Sdl2Clay.RenderCommands(commands);
+            }
+
             // Present the rendered frame
-            SDL_RenderPresent(_renderer);
+            SDL_RenderPresent((SDL_Renderer*)_renderer);
 
             // Update FPS counter
             _frameCount++;

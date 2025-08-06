@@ -1,12 +1,13 @@
 ﻿using C4TX.SDL.Models;
 using static C4TX.SDL.Engine.GameEngine;
-using static SDL2.SDL;
+using SDL;
+using static SDL.SDL3;
 
 namespace C4TX.SDL.Engine.Renderer
 {
     public partial class RenderEngine
     {
-        public static void RenderProfileSelection()
+        public static unsafe void RenderProfileSelection()
         {
             // Draw background
             DrawMenuBackground();
@@ -83,7 +84,7 @@ namespace C4TX.SDL.Engine.Renderer
                     : new SDL_Color() { r = 40, g = 40, b = 80, a = 255 };
 
                 // Draw profile item background
-                SDL_Rect itemRect = new SDL_Rect()
+                SDL_FRect itemRect = new SDL_FRect()
                 {
                     x = panelX + 10,
                     y = profileY,
@@ -91,14 +92,14 @@ namespace C4TX.SDL.Engine.Renderer
                     h = profileItemHeight
                 };
 
-                SDL_SetRenderDrawColor(_renderer, itemColor.r, itemColor.g, itemColor.b, itemColor.a);
-                SDL_RenderFillRect(_renderer, ref itemRect);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, itemColor.r, itemColor.g, itemColor.b, itemColor.a);
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & itemRect);
 
                 // Draw border for selected item
                 if (i == _selectedProfileIndex)
                 {
-                    SDL_SetRenderDrawColor(_renderer, 150, 150, 255, 255);
-                    SDL_RenderDrawRect(_renderer, ref itemRect);
+                    SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 150, 150, 255, 255);
+                    SDL_RenderRect((SDL_Renderer*)_renderer, & itemRect);
                 }
 
                 // Draw profile details

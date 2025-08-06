@@ -1,22 +1,12 @@
-﻿using C4TX.SDL.KeyHandler;
-using C4TX.SDL.Models;
-using C4TX.SDL.Services;
-using SDL2;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
+﻿using SDL;
+using static SDL.SDL3;
 using static C4TX.SDL.Engine.GameEngine;
-using static SDL2.SDL;
-using static System.Formats.Asn1.AsnWriter;
 
 namespace C4TX.SDL.Engine.Renderer
 {
     public partial class RenderEngine
     {
-        public static void RenderVolumeIndicator()
+        public static unsafe void RenderVolumeIndicator()
         {
             // Calculate position for a centered floating panel
             int indicatorWidth = 300;
@@ -43,10 +33,10 @@ namespace C4TX.SDL.Engine.Renderer
             int barX = x + 20;
             int barY = y + 60;
 
-            SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(_renderer, 50, 50, 50, alpha);
+            SDL_SetRenderDrawBlendMode((SDL_Renderer*)_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 50, 50, 50, alpha);
 
-            SDL_Rect barBgRect = new SDL_Rect
+            SDL_FRect barBgRect = new SDL_FRect
             {
                 x = barX,
                 y = barY,
@@ -54,7 +44,7 @@ namespace C4TX.SDL.Engine.Renderer
                 h = barHeight
             };
 
-            SDL_RenderFillRect(_renderer, ref barBgRect);
+            SDL_RenderFillRect((SDL_Renderer*)_renderer, &barBgRect);
 
             // Draw volume level
             int filledWidth = (int)(barWidth * AudioEngine._volume);
@@ -83,9 +73,9 @@ namespace C4TX.SDL.Engine.Renderer
             }
 
             volumeColor.a = alpha;
-            SDL_SetRenderDrawColor(_renderer, volumeColor.r, volumeColor.g, volumeColor.b, volumeColor.a);
+            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, volumeColor.r, volumeColor.g, volumeColor.b, volumeColor.a);
 
-            SDL_Rect barFillRect = new SDL_Rect
+            SDL_FRect barFillRect = new SDL_FRect
             {
                 x = barX,
                 y = barY,
@@ -93,7 +83,7 @@ namespace C4TX.SDL.Engine.Renderer
                 h = barHeight
             };
 
-            SDL_RenderFillRect(_renderer, ref barFillRect);
+            SDL_RenderFillRect((SDL_Renderer*)_renderer, & barFillRect);
         }
         public static void RenderRateIndicator()
         {
@@ -121,11 +111,11 @@ namespace C4TX.SDL.Engine.Renderer
                 _showRateIndicator = false;
             }
         }
-        public static void RenderLoadingAnimation(string loadingText, int progress = -1, int total = -1)
+        public static unsafe void RenderLoadingAnimation(string loadingText, int progress = -1, int total = -1)
         {
             // Clear screen with background color
-            SDL_SetRenderDrawColor(_renderer, Color._bgColor.r, Color._bgColor.g, Color._bgColor.b, Color._bgColor.a);
-            SDL_RenderClear(_renderer);
+            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._bgColor.r, Color._bgColor.g, Color._bgColor.b, Color._bgColor.a);
+            SDL_RenderClear((SDL_Renderer*)_renderer);
 
             // Draw a title
             SDL_Color titleColor = new SDL_Color() { r = 255, g = 255, b = 255, a = 255 };
@@ -149,27 +139,27 @@ namespace C4TX.SDL.Engine.Renderer
                 int barY = _windowHeight / 2 + 40;
 
                 // Draw background
-                SDL_Rect bgRect = new SDL_Rect()
+                SDL_FRect bgRect = new SDL_FRect()
                 {
                     x = barX,
                     y = barY,
                     w = barWidth,
                     h = barHeight
                 };
-                SDL_SetRenderDrawColor(_renderer, 50, 50, 50, 255);
-                SDL_RenderFillRect(_renderer, ref bgRect);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 50, 50, 50, 255);
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & bgRect);
 
                 // Draw progress
                 float progressPercentage = (float)progress / total;
-                SDL_Rect progressRect = new SDL_Rect()
+                SDL_FRect progressRect = new SDL_FRect()
                 {
                     x = barX,
                     y = barY,
                     w = (int)(barWidth * progressPercentage),
                     h = barHeight
                 };
-                SDL_SetRenderDrawColor(_renderer, 0, 200, 255, 255);
-                SDL_RenderFillRect(_renderer, ref progressRect);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 0, 200, 255, 255);
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & progressRect);
 
                 // Draw progress text
                 string progressText = $"{progress}/{total} ({(int)(progressPercentage * 100)}%)";
@@ -199,13 +189,13 @@ namespace C4TX.SDL.Engine.Renderer
 
                     // Fade color based on position in the cycle
                     byte alpha = (byte)(255 - i * 30 % 255);
-                    SDL_SetRenderDrawColor(_renderer, 0, 200, 255, alpha);
-                    SDL_RenderDrawLine(_renderer, x1, y1, x2, y2);
+                    SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 0, 200, 255, alpha);
+                    SDL_RenderLine((SDL_Renderer*)_renderer, x1, y1, x2, y2);
                 }
             }
 
             // Present the renderer
-            SDL_RenderPresent(_renderer);
+            SDL_RenderPresent((SDL_Renderer*)_renderer);
         }
         private static void DrawFpsCounter()
         {
@@ -319,31 +309,36 @@ namespace C4TX.SDL.Engine.Renderer
                 int barY = notificationY + height - barHeight - 5;
 
                 // Draw background
-                SDL_Rect barBg = new SDL_Rect
+                SDL_FRect barBg = new SDL_FRect
                 {
                     x = barX,
                     y = barY,
                     w = barWidth,
                     h = barHeight
                 };
-
-                SDL_SetRenderDrawColor(_renderer, 50, 50, 50, 200);
-                SDL_RenderFillRect(_renderer, ref barBg);
+                unsafe
+                {
+                    SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 50, 50, 50, 200);
+                    SDL_RenderFillRect((SDL_Renderer*)_renderer, &barBg);
+                }
+                
 
                 // Draw progress
                 int progressWidth = (int)(barWidth * _updateService.DownloadProgress);
                 if (progressWidth > 0)
                 {
-                    SDL_Rect progressRect = new SDL_Rect
+                    SDL_FRect progressRect = new SDL_FRect
                     {
                         x = barX,
                         y = barY,
                         w = progressWidth,
                         h = barHeight
                     };
-
-                    SDL_SetRenderDrawColor(_renderer, 220, 220, 255, 255);
-                    SDL_RenderFillRect(_renderer, ref progressRect);
+                    unsafe
+                    {
+                        SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 220, 220, 255, 255);
+                        SDL_RenderFillRect((SDL_Renderer*)_renderer, &progressRect);
+                    }
                 }
 
                 return;
@@ -383,11 +378,15 @@ namespace C4TX.SDL.Engine.Renderer
                 );
 
                 // Check if action button is clicked
-                int mouseX, mouseY;
-                uint mouseState = SDL_GetMouseState(out mouseX, out mouseY);
+                float mouseX, mouseY;
+                uint mouseState = 0;
+                unsafe
+                {
+                    mouseState = (uint)SDL_GetMouseState(&mouseX, &mouseY);
+                }
 
                 // Create action button rectangle for hit testing
-                SDL_Rect actionRect = new SDL_Rect
+                SDL_FRect actionRect = new SDL_FRect
                 {
                     x = actionX,
                     y = notificationY,

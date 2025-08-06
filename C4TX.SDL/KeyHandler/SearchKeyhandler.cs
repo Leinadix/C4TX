@@ -3,7 +3,7 @@ using C4TX.SDL.Services;
 using System;
 using System.Threading.Tasks;
 using static C4TX.SDL.Engine.GameEngine;
-using static SDL2.SDL;
+using SDL;
 using static C4TX.SDL.Services.ProfileService;
 using C4TX.SDL.Engine;
 
@@ -40,8 +40,8 @@ namespace C4TX.SDL.KeyHandler
                         // Only if we're no longer in search mode (meaning CommitSearchSelection succeeded)
                         // should we try to start the game
                         if (!_isSearching && _availableBeatmapSets != null && _availableBeatmapSets.Count > 0 &&
-                            _selectedSongIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count &&
-                            _selectedDifficultyIndex >= 0 && _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+                            _selectedSetIndex >= 0 && _selectedSetIndex < _availableBeatmapSets.Count &&
+                            _selectedDifficultyIndex >= 0 && _selectedDifficultyIndex < _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
                         {
                             // This is the standard behavior when Enter is pressed on a beatmap
                             // in the regular song selection screen
@@ -84,7 +84,7 @@ namespace C4TX.SDL.KeyHandler
                 if (_showSearchResults && _searchResults.Count > 0)
                 {
                     // Get set and diff position for the current selection
-                    var setDiffPosition = GetSetAndDiffFromFlatIndex(_selectedSongIndex);
+                    var setDiffPosition = GetSetAndDiffFromFlatIndex(_selectedSetIndex);
                     if (setDiffPosition.SetIndex < 0)
                     {
                         // Could not find the position, can't do proper grouped navigation
@@ -107,8 +107,8 @@ namespace C4TX.SDL.KeyHandler
                             int newFlatIndex = GetFlatIndexFromSetAndDiff(targetSetIndex, 0);
                             if (newFlatIndex >= 0)
                             {
-                                _selectedSongIndex = newFlatIndex;
-                                LoadPreviewForSearchResult(_selectedSongIndex);
+                                _selectedSetIndex = newFlatIndex;
+                                LoadPreviewForSearchResult(_selectedSetIndex);
                                 Console.WriteLine($"Moving to previous set: {targetSetIndex}, flat index: {newFlatIndex}");
                             }
                         }
@@ -129,8 +129,8 @@ namespace C4TX.SDL.KeyHandler
                             int newFlatIndex = GetFlatIndexFromSetAndDiff(targetSetIndex, 0);
                             if (newFlatIndex >= 0)
                             {
-                                _selectedSongIndex = newFlatIndex;
-                                LoadPreviewForSearchResult(_selectedSongIndex);
+                                _selectedSetIndex = newFlatIndex;
+                                LoadPreviewForSearchResult(_selectedSetIndex);
                                 Console.WriteLine($"Moving to next set: {targetSetIndex}, flat index: {newFlatIndex}");
                             }
                         }
@@ -146,8 +146,8 @@ namespace C4TX.SDL.KeyHandler
                             int newFlatIndex = GetFlatIndexFromSetAndDiff(currentSetIndex, currentDiffIndex - 1);
                             if (newFlatIndex >= 0)
                             {
-                                _selectedSongIndex = newFlatIndex;
-                                LoadPreviewForSearchResult(_selectedSongIndex);
+                                _selectedSetIndex = newFlatIndex;
+                                LoadPreviewForSearchResult(_selectedSetIndex);
                                 Console.WriteLine($"Moving up in set {currentSetIndex} to diff {currentDiffIndex - 1}, flat index: {newFlatIndex}");
                             }
                         }
@@ -162,8 +162,8 @@ namespace C4TX.SDL.KeyHandler
                             int newFlatIndex = GetFlatIndexFromSetAndDiff(currentSetIndex, currentDiffIndex + 1);
                             if (newFlatIndex >= 0)
                             {
-                                _selectedSongIndex = newFlatIndex;
-                                LoadPreviewForSearchResult(_selectedSongIndex);
+                                _selectedSetIndex = newFlatIndex;
+                                LoadPreviewForSearchResult(_selectedSetIndex);
                                 Console.WriteLine($"Moving down in set {currentSetIndex} to diff {currentDiffIndex + 1}, flat index: {newFlatIndex}");
                             }
                         }
@@ -205,7 +205,7 @@ namespace C4TX.SDL.KeyHandler
                 if (!_showSearchResults)
                 {
                     // Otherwise reset to first song
-                    _selectedSongIndex = 0;
+                    _selectedSetIndex = 0;
                     _selectedDifficultyIndex = 0;
                     UpdateSelectedBeatmap();
                 }
@@ -230,7 +230,7 @@ namespace C4TX.SDL.KeyHandler
                     {
                         foreach (var beatmap in set.Beatmaps)
                         {
-                            if (currentIndex == _selectedSongIndex)
+                            if (currentIndex == _selectedSetIndex)
                             {
                                 // Find this beatmap in the main list
                                 for (int i = 0; i < _availableBeatmapSets.Count; i++)
@@ -245,7 +245,7 @@ namespace C4TX.SDL.KeyHandler
                                                 selectedBeatmapPath = _availableBeatmapSets[i].Beatmaps[j].Path;
 
                                                 // Now update the actual selection
-                                                _selectedSongIndex = i;
+                                                _selectedSetIndex = i;
                                                 _selectedDifficultyIndex = j;
 
                                                 // Exit search mode
@@ -289,11 +289,11 @@ namespace C4TX.SDL.KeyHandler
         {
             // Using normal beatmap list (for non-search operations)
             if (_availableBeatmapSets != null && _availableBeatmapSets.Count > 0 &&
-                    _selectedSongIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count &&
-                    _selectedDifficultyIndex >= 0 && _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+                    _selectedSetIndex >= 0 && _selectedSetIndex < _availableBeatmapSets.Count &&
+                    _selectedDifficultyIndex >= 0 && _selectedDifficultyIndex < _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
             {
                 // Load the selected beatmap
-                string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[_selectedDifficultyIndex].Path;
+                string beatmapPath = _availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex].Path;
                 BeatmapEngine.LoadBeatmap(beatmapPath);
 
                 // Refresh beatmap data from database
@@ -385,7 +385,7 @@ namespace C4TX.SDL.KeyHandler
                     // In search mode, we need to keep track of the flat index separately
                     // We'll use the _selectedSongIndex just for searching, but we won't modify 
                     // the main indexes until the user makes a selection
-                    _selectedSongIndex = 0; // Start with the first search result
+                    _selectedSetIndex = 0; // Start with the first search result
 
                     // Find the matching song in the main list and load it for preview
                     // but don't switch the selection indexes yet

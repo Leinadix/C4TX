@@ -1,8 +1,7 @@
 ﻿using C4TX.SDL.KeyHandler;
-using SDL2;
-using System.Runtime.InteropServices;
 using static C4TX.SDL.Engine.GameEngine;
-using static SDL2.SDL;
+using SDL;
+using static SDL.SDL3;
 
 namespace C4TX.SDL.Engine.Renderer
 {
@@ -28,8 +27,7 @@ namespace C4TX.SDL.Engine.Renderer
                 RenderVolumeIndicator();
             }
         }
-
-        public static void DrawSettingsPanel()
+        public static unsafe void DrawSettingsPanel()
         {
             int panelWidth = _windowWidth * 2 / 3;
             int panelHeight = _windowHeight - 200;
@@ -82,15 +80,15 @@ namespace C4TX.SDL.Engine.Renderer
                 if (i < 9)
                 {
                     // Draw slider track for non-keybinding settings
-                    SDL_Rect sliderTrack = new SDL_Rect
+                    SDL_FRect sliderTrack = new SDL_FRect
                     {
                         x = sliderX,
                         y = sliderY - 4,
                         w = sliderWidth,
                         h = 8
                     };
-                    SDL_SetRenderDrawColor(_renderer, 80, 80, 100, 255);
-                    SDL_RenderFillRect(_renderer, ref sliderTrack);
+                    SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 80, 80, 100, 255);
+                    SDL_RenderFillRect((SDL_Renderer*)_renderer, & sliderTrack);
                 }
 
                 // Special handling for different setting types

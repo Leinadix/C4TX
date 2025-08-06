@@ -1,6 +1,6 @@
 ﻿using C4TX.SDL.Models;
 using static C4TX.SDL.Engine.GameEngine;
-using static SDL2.SDL;
+using SDL;
 
 namespace C4TX.SDL.KeyHandler
 {

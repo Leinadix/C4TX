@@ -3,7 +3,7 @@ using C4TX.SDL.Services;
 using System;
 using System.Threading.Tasks;
 using static C4TX.SDL.Engine.GameEngine;
-using static SDL2.SDL;
+using SDL;
 using static C4TX.SDL.Services.ProfileService;
 
 namespace C4TX.SDL.KeyHandler

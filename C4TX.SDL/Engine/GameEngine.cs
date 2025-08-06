@@ -1,15 +1,14 @@
 using C4TX.SDL.Models;
 using C4TX.SDL.Services;
 using ManagedBass;
-using ManagedBass.Fx;
-using SDL2;
+using static SDL.SDL3;
 using System.Diagnostics;
-using static SDL2.SDL;
-using System.Runtime.InteropServices;
-using System.Text;
+using Clay_cs;
 using System.Reflection;
 using C4TX.SDL.KeyHandler;
 using C4TX.SDL.Engine.Renderer;
+using System.Numerics;
+using SDL;
 
 namespace C4TX.SDL.Engine
 {
@@ -36,6 +35,7 @@ namespace C4TX.SDL.Engine
         public static DifficultyRatingService _difficultyRatingService;
         public static Beatmap? _currentBeatmap;
         public static double _currentTime;
+        public static double _deltaTime;
         public static Stopwatch _gameTimer;
         public static List<BeatmapSet>? _availableBeatmapSets;
         public const int START_DELAY_MS = 3000; // 3 second delay at start
@@ -100,7 +100,7 @@ namespace C4TX.SDL.Engine
         }
 
         public static GameState _currentState = GameState.ProfileSelect;
-        public static int _selectedSongIndex = 0;
+        public static int _selectedSetIndex = 0;
         public static int _selectedDifficultyIndex = 0;
         public static bool _isSelectingDifficulty = false;
 
@@ -213,45 +213,33 @@ namespace C4TX.SDL.Engine
         }
 
         // Initialize SDL
-        public bool Initialize()
+        public unsafe bool Initialize()
         {
             // Initialize SDL
-            if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) < 0)
+            if (!SDL_Init((SDL_InitFlags)(SDL_INIT_VIDEO | SDL_INIT_AUDIO)))
             {
                 Console.WriteLine($"SDL could not initialize! SDL_Error: {SDL_GetError()}");
                 return false;
             }
 
-            // Start text input to be aware of keyboard layouts
-            SDL_StartTextInput();
-
-            // Initialize SDL_image for loading PNG, JPG, and other image formats
-            try
-            {
-                int imgInitResult = SDL2.SDL_image.IMG_Init(0);
-                Console.WriteLine($"SDL_image initialized with result: {imgInitResult}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"SDL_image initialization warning: {ex.Message}");
-                // Continue even if IMG initialization fails
-            }
+            
 
             // Load settings
             LoadSettings();
 
-            if (SDL_ttf.TTF_Init() < 0)
+            if (!SDL3_ttf.TTF_Init())
             {
                 Console.WriteLine($"SDL_ttf could not initialize! Error: {SDL_GetError()}");
                 return false;
             }
 
-            Renderer.RenderEngine._window = SDL_CreateWindow("C4TX",
-                                      SDL_WINDOWPOS_UNDEFINED,
-                                      SDL_WINDOWPOS_UNDEFINED,
+            Renderer.RenderEngine._window = (IntPtr)SDL_CreateWindow("C4TX",
                                       Renderer.RenderEngine._windowWidth,
                                       Renderer.RenderEngine._windowHeight,
-                                      SDL_WindowFlags.SDL_WINDOW_SHOWN);
+                                      0);
+
+            // Start text input to be aware of keyboard layouts
+            SDL_StartTextInput((SDL_Window*)Renderer.RenderEngine._window);
 
             if (Renderer.RenderEngine._window == IntPtr.Zero)
             {
@@ -259,14 +247,16 @@ namespace C4TX.SDL.Engine
                 return false;
             }
 
-            Renderer.RenderEngine._renderer = SDL_CreateRenderer(Renderer.RenderEngine._window, -1,
-                SDL_RendererFlags.SDL_RENDERER_ACCELERATED | SDL_RendererFlags.SDL_RENDERER_PRESENTVSYNC);
+            Renderer.RenderEngine._renderer = (IntPtr)SDL_CreateRenderer((SDL_Window*) RenderEngine._window, "");
+            
 
             if (Renderer.RenderEngine._renderer == IntPtr.Zero)
             {
                 Console.WriteLine($"Renderer could not be created! SDL_Error: {SDL_GetError()}");
                 return false;
             }
+
+            SDL_SetRenderVSync((SDL_Renderer*)RenderEngine._renderer, 0);
 
             // Initialize skin service now that renderer is created
             InitializeSkinService();
@@ -279,6 +269,11 @@ namespace C4TX.SDL.Engine
 
             Renderer.RenderEngine._isRunning = true;
             return true;
+        }
+
+        public static void ErrorHandler(Clay_ErrorData data)
+        {
+            Console.WriteLine($"{data.errorType}: {data.errorText.ToCSharpString()}");
         }
 
         // Initialize the skin service after renderer is created
@@ -442,12 +437,12 @@ namespace C4TX.SDL.Engine
             if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.Id))
             {
                 // Find the beatmap path from the available beatmaps
-                if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
-                    _selectedSongIndex < _availableBeatmapSets.Count &&
+                if (_availableBeatmapSets != null && _selectedSetIndex >= 0 &&
+                    _selectedSetIndex < _availableBeatmapSets.Count &&
                     _selectedDifficultyIndex >= 0 &&
-                    _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+                    _selectedDifficultyIndex < _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
                 {
-                    string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[_selectedDifficultyIndex].Path;
+                    string beatmapPath = _availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex].Path;
                     // Delay preview by a short time to allow for transition
                     _gameTimer.Start(); // Restart the timer for animation
                     Task.Delay(300).ContinueWith(_ => AudioEngine.PreviewBeatmapAudio(beatmapPath));
@@ -477,6 +472,10 @@ namespace C4TX.SDL.Engine
                 _currentState = GameState.Playing;
             }
         }
+
+        public static Vector2 mousePosition;
+        public static Vector2 mouseScroll;
+        public static bool mouseDown;
 
         // The main game loop
         public static void Run()
@@ -525,34 +524,36 @@ namespace C4TX.SDL.Engine
                 }
             }
             
+            double lastFrameTime = _gameTimer.ElapsedMilliseconds;
+
             while (Renderer.RenderEngine._isRunning)
-            {
+            unsafe {
                 // Update timing
                 _currentTime = _gameTimer.ElapsedMilliseconds;
-
+                _deltaTime = (_currentTime - lastFrameTime) / 1000.0;
                 SDL_Event e;
 
                 // Process events
-                while (SDL_PollEvent(out e) != 0)
+                while (SDL_PollEvent(&e))
                 {
-                    if (e.type == SDL_EventType.SDL_QUIT)
+                    if (e.type == (uint)SDL_EventType.SDL_EVENT_QUIT)
                     {
                         Renderer.RenderEngine._isRunning = false;
                     }
-                    else if (e.type == SDL_EventType.SDL_KEYDOWN)
+                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN)
                     {
-                        HandleKeyDown(e.key.keysym.scancode);
+                        HandleKeyDown(e.key.scancode);
                     }
-                    else if (e.type == SDL_EventType.SDL_KEYUP)
+                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_KEY_UP)
                     {
-                        HandleKeyUp(e.key.keysym.scancode);
+                        HandleKeyUp(e.key.scancode);
                     }
-                    else if (e.type == SDL_EventType.SDL_TEXTINPUT)
+                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_TEXT_INPUT)
                     {
                         // Using Marshal to convert the text input to a string safely
                         // This handles keyboard layout awareness properly
                         string text = SDL_GetEventText(e);
-                        
+
                         // Process the text input based on the current game state
                         if (_currentState == GameState.ProfileSelect)
                         {
@@ -564,10 +565,29 @@ namespace C4TX.SDL.Engine
                         }
                         // Add more states if they need text input
                     }
-                    else if (e.type == SDL_EventType.SDL_TEXTEDITING)
+                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_TEXT_EDITING)
                     {
                         // IME composition text handling can be added here if needed
                     }
+                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_MOTION)
+                    {
+                        mousePosition = new Vector2(e.motion.x, e.motion.y);
+                    } else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_WHEEL)
+                    {
+                        mouseScroll = new Vector2(e.wheel.x, e.wheel.y);
+                        Console.WriteLine($"Wheel at ({e.wheel.x}, {e.wheel.y})");
+                    }
+                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_DOWN)
+                    {
+                        mouseDown = true;
+                        Console.WriteLine($"Mouse down at ({e.button.x}, {e.button.y})");
+                    }
+                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_UP)
+                    {
+                        mouseDown = false;
+                        Console.WriteLine($"Mouse up at ({e.button.x}, {e.button.y})");
+                    }
+
                 }
 
                 // Update game state
@@ -577,6 +597,8 @@ namespace C4TX.SDL.Engine
 
                 // Small delay to not hog CPU
                 SDL_Delay(1);
+
+                lastFrameTime = _currentTime;
             }
         }
 
@@ -734,19 +756,19 @@ namespace C4TX.SDL.Engine
         }
 
         // Enable text input mode
-        public static void StartTextInput()
+        public static unsafe void StartTextInput()
         {
-            SDL_StartTextInput();
+            SDL_StartTextInput((SDL_Window*)RenderEngine._window);
         }
 
         // Disable text input mode
-        public static void StopTextInput()
+        public static unsafe void StopTextInput()
         {
-            SDL_StopTextInput();
+            SDL_StopTextInput((SDL_Window*)RenderEngine._window);
         }
 
         // Set the rectangle where text input will appear (for IME candidate window positioning)
-        public static void SetTextInputRect(int x, int y, int w, int h)
+        public static unsafe void SetTextInputRect(int x, int y, int w, int h)
         {
             SDL_Rect rect = new SDL_Rect
             {
@@ -755,7 +777,7 @@ namespace C4TX.SDL.Engine
                 w = w,
                 h = h
             };
-            SDL_SetTextInputRect(ref rect);
+            SDL_SetTextInputArea((SDL_Window*)RenderEngine._window, &rect, 0);
         }
 
         public static void CheckForHits(int lane)
@@ -1003,12 +1025,12 @@ namespace C4TX.SDL.Engine
             if (_currentState == GameState.Menu && _previousState != GameState.Menu)
             {
                 // When transitioning back to menu, start the preview if we have a selected beatmap
-                if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
-                    _selectedSongIndex < _availableBeatmapSets.Count &&
+                if (_availableBeatmapSets != null && _selectedSetIndex >= 0 &&
+                    _selectedSetIndex < _availableBeatmapSets.Count &&
                     _selectedDifficultyIndex >= 0 &&
-                    _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+                    _selectedDifficultyIndex < _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
                 {
-                    string beatmapPath = _availableBeatmapSets[_selectedSongIndex].Beatmaps[_selectedDifficultyIndex].Path;
+                    string beatmapPath = _availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex].Path;
                     // Only preview if not already playing
                     if (!_isPreviewPlaying)
                     {
@@ -1020,18 +1042,18 @@ namespace C4TX.SDL.Engine
             // Update previous state
             _previousState = _currentState;
         }
-        public void Dispose()
+        public unsafe void Dispose()
         {
             // Clean up SDL resources
             if (Renderer.RenderEngine._renderer != IntPtr.Zero)
             {
-                SDL_DestroyRenderer(Renderer.RenderEngine._renderer);
+                SDL_DestroyRenderer((SDL_Renderer*)Renderer.RenderEngine._renderer);
                 Renderer.RenderEngine._renderer = IntPtr.Zero;
             }
 
             if (Renderer.RenderEngine._window != IntPtr.Zero)
             {
-                SDL_DestroyWindow(Renderer.RenderEngine._window);
+                SDL_DestroyWindow((SDL_Window*)Renderer.RenderEngine._window);
                 Renderer.RenderEngine._window = IntPtr.Zero;
             }
 
@@ -1040,7 +1062,7 @@ namespace C4TX.SDL.Engine
             {
                 if (texture != IntPtr.Zero)
                 {
-                    SDL_DestroyTexture(texture);
+                    SDL_DestroyTexture((SDL_Texture*)texture);
                 }
             }
             Renderer.RenderEngine._textures.Clear();
@@ -1050,7 +1072,7 @@ namespace C4TX.SDL.Engine
             {
                 if (texture != IntPtr.Zero)
                 {
-                    SDL_DestroyTexture(texture);
+                    SDL_DestroyTexture((SDL_Texture*)texture);
                 }
             }
             Renderer.RenderEngine._textTextures.Clear();
@@ -1060,7 +1082,7 @@ namespace C4TX.SDL.Engine
             {
                 if (texture != IntPtr.Zero)
                 {
-                    SDL_DestroyTexture(texture);
+                    SDL_DestroyTexture((SDL_Texture*)texture);
                 }
             }
             Renderer.RenderEngine._backgroundTextures.Clear();
@@ -1068,13 +1090,13 @@ namespace C4TX.SDL.Engine
             // Clean up fonts
             if (Renderer.RenderEngine._font != IntPtr.Zero)
             {
-                SDL_ttf.TTF_CloseFont(Renderer.RenderEngine._font);
+                SDL3_ttf.TTF_CloseFont((TTF_Font*)Renderer.RenderEngine._font);
                 Renderer.RenderEngine._font = IntPtr.Zero;
             }
 
             if (Renderer.RenderEngine._largeFont != IntPtr.Zero)
             {
-                SDL_ttf.TTF_CloseFont(Renderer.RenderEngine._largeFont);
+                SDL3_ttf.TTF_CloseFont((TTF_Font*)Renderer.RenderEngine._largeFont);
                 Renderer.RenderEngine._largeFont = IntPtr.Zero;
             }
 
@@ -1092,7 +1114,7 @@ namespace C4TX.SDL.Engine
             }
 
             // Quit SDL subsystems
-            SDL_ttf.TTF_Quit();
+            SDL3_ttf.TTF_Quit();
             SDL_Quit();
 
             // Free the audio resources
@@ -1225,7 +1247,7 @@ namespace C4TX.SDL.Engine
         }
 
         // Helper method to extract text from SDL_TextInputEvent
-        private static string SDL_GetEventText(SDL_Event e)
+        public static string SDL_GetEventText(SDL_Event e)
         {
             unsafe
             {

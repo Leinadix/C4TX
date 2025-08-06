@@ -1,4 +1,4 @@
-﻿using static SDL2.SDL;
+﻿using SDL;
 using static C4TX.SDL.Engine.GameEngine;
 
 namespace C4TX.SDL.KeyHandler

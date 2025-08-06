@@ -1,18 +1,20 @@
-﻿using System;
-using System.Runtime.InteropServices;
-using C4TX.SDL.Engine;
+﻿using C4TX.SDL.Engine;
 using C4TX.SDL.Engine.Renderer;
+using Clay_cs;
+using System.Runtime.InteropServices;
+using static C4TX.SDL.Engine.GameEngine;
+using SDL;
 
 namespace C4TX.SDL
 {
     class Program
     {
-        static void Main(string[] args)
+        static unsafe void Main(string[] args)
         {
             Console.WriteLine("C4TX SDL - 4K Rhythm Game");
             
             // Display version information
-            string version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString();
+            string version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version!.ToString();
             Console.WriteLine($"Version: {version}");
             Console.WriteLine("Loading...");
             
@@ -27,6 +29,21 @@ namespace C4TX.SDL
                     Console.WriteLine("Failed to initialize SDL. Exiting.");
                     return;
                 }
+
+                using var arena = Clay.CreateArena(Clay.MinMemorySize());
+
+                Console.WriteLine("Initializing Clay...");
+                Console.WriteLine($"Arena memory: {Clay.MinMemorySize()}");
+
+                Clay.Initialize(arena, new Clay_Dimensions(RenderEngine._windowWidth, RenderEngine._windowHeight), ErrorHandler);
+
+                Clay.SetDebugModeEnabled(true);
+
+                Clay.SetMeasureTextFunction(ClaySDL.Sdl2Clay.MeasureText);
+
+                ClaySDL.Sdl2Clay.Fonts[0] = RenderEngine._font;
+                ClaySDL.Sdl2Clay.Fonts[1] = RenderEngine._largeFont;
+                ClaySDL.Sdl2Clay.Renderer = (SDL_Renderer*)RenderEngine._renderer;
 
                 // Show initial loading screen
                 Engine.Renderer.RenderEngine.RenderLoadingAnimation("Initializing...");
