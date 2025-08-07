@@ -4,6 +4,7 @@ using Clay_cs;
 using static C4TX.SDL.Engine.GameEngine;
 using SDL;
 using static SDL.SDL3;
+using System.Numerics;
 
 namespace C4TX.SDL.Engine.Renderer
 {
@@ -20,11 +21,16 @@ namespace C4TX.SDL.Engine.Renderer
         ];
         private static int _selectedDocumentIndex;
 
+        static Vector2 wheeltotal = new Vector2(0, 0);
+
         public static void RenderMenu()
         {
             Clay.SetLayoutDimensions(new Clay_Dimensions(RenderEngine._windowWidth, RenderEngine._windowHeight));
             Clay.SetPointerState(mousePosition, mouseDown);
             Clay.UpdateScrollContainers(true, mouseScroll, (float)_deltaTime);
+
+            wheeltotal += mouseScroll * 1000f * (float)_deltaTime;
+
 
             var _contentBackgroundColor = new Clay_Color(30, 30, 40, 255);
 
@@ -143,9 +149,11 @@ namespace C4TX.SDL.Engine.Renderer
                     padding = Clay_Padding.All(16),
                     childGap = 1,
                 },
-                scroll = new()
+                clip = new()
                 {
                     vertical = true,
+                    horizontal = false,
+                    childOffset = wheeltotal
                 }
             }))
             {

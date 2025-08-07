@@ -238,6 +238,8 @@ namespace C4TX.SDL.Engine
                                       Renderer.RenderEngine._windowHeight,
                                       0);
 
+           
+
             // Start text input to be aware of keyboard layouts
             SDL_StartTextInput((SDL_Window*)Renderer.RenderEngine._window);
 
@@ -255,6 +257,8 @@ namespace C4TX.SDL.Engine
                 Console.WriteLine($"Renderer could not be created! SDL_Error: {SDL_GetError()}");
                 return false;
             }
+
+            Renderer.RenderEngine._textEngine = (nint)SDL3_ttf.TTF_CreateRendererTextEngine((SDL_Renderer*)Renderer.RenderEngine._renderer);
 
             SDL_SetRenderVSync((SDL_Renderer*)RenderEngine._renderer, 0);
 
@@ -533,8 +537,10 @@ namespace C4TX.SDL.Engine
                 _deltaTime = (_currentTime - lastFrameTime) / 1000.0;
                 SDL_Event e;
 
-                // Process events
-                while (SDL_PollEvent(&e))
+                mouseScroll = new Vector2(0, 0);
+
+                    // Process events
+                    while (SDL_PollEvent(&e))
                 {
                     if (e.type == (uint)SDL_EventType.SDL_EVENT_QUIT)
                     {

@@ -83,7 +83,7 @@ namespace C4TX.SDL.Engine.Renderer
 
                 var commands = Clay.EndLayout();
 
-                ClaySDL.Sdl2Clay.RenderCommands(commands);
+                ClaySDL.ClaySDL3.RenderCommands(commands);
             }
 
             // Present the rendered frame

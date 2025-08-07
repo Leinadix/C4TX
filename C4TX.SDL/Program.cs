@@ -39,11 +39,11 @@ namespace C4TX.SDL
 
                 Clay.SetDebugModeEnabled(true);
 
-                Clay.SetMeasureTextFunction(ClaySDL.Sdl2Clay.MeasureText);
+                Clay.SetMeasureTextFunction(ClaySDL.ClaySDL3.MeasureText);
 
-                ClaySDL.Sdl2Clay.Fonts[0] = RenderEngine._font;
-                ClaySDL.Sdl2Clay.Fonts[1] = RenderEngine._largeFont;
-                ClaySDL.Sdl2Clay.Renderer = (SDL_Renderer*)RenderEngine._renderer;
+                ClaySDL.ClaySDL3.Fonts[0] = RenderEngine._font;
+                ClaySDL.ClaySDL3.Fonts[1] = RenderEngine._largeFont;
+                ClaySDL.ClaySDL3.Renderer = (SDL_Renderer*)RenderEngine._renderer;
 
                 // Show initial loading screen
                 Engine.Renderer.RenderEngine.RenderLoadingAnimation("Initializing...");

@@ -12,6 +12,7 @@ namespace C4TX.SDL.Engine.Renderer
         public static bool _isRunning = false;
         public static bool _isFullscreen = false;
         public static Dictionary<int, IntPtr> _textures = new Dictionary<int, IntPtr>();
+        public static IntPtr _textEngine;
 
         // UI Layout constants
         public const int PANEL_PADDING = 20;
