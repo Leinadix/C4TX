@@ -51,6 +51,9 @@ namespace C4TX.SDL.Engine.Renderer
 
 
             // Draw hit position line
+
+            // TODO: Skinning Option
+
             SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 255, 255, 255, 255);
             int lineStartX = _lanePositions[0] - (_laneWidth / 2);
             int lineEndX = _lanePositions[3] + (_laneWidth / 2);
@@ -58,6 +61,7 @@ namespace C4TX.SDL.Engine.Renderer
 
 
             // Draw lane keys
+            // TODO: Receptor Skinning
             for (int i = 0; i < 4; i++)
             {
                 SDL_FRect rect = new SDL_FRect
@@ -126,6 +130,7 @@ namespace C4TX.SDL.Engine.Renderer
                 RenderText(keyName, _lanePositions[i], _hitPosition + 20, keyTextColor, false, true);
             }
 
+            // TODO: Enable/Disable hitEffects
             // Draw hit effects
             foreach (var effect in _hitEffects)
             {
@@ -155,6 +160,7 @@ namespace C4TX.SDL.Engine.Renderer
                 }
             }
 
+            // TODO: Make Skinnable
             // Draw hit feedback popup
             if (_currentTime - _lastHitTime <= _hitFeedbackDuration && !string.IsNullOrEmpty(_lastHitFeedback))
             {
@@ -175,6 +181,7 @@ namespace C4TX.SDL.Engine.Renderer
                 RenderText(_lastHitFeedback, playFieldCenterX, popupY, fadeColor, true, true);
             }
 
+            // OPTIONAL: LNs
             // Draw active notes
             foreach (var noteEntry in _activeNotes)
             {
@@ -366,6 +373,7 @@ namespace C4TX.SDL.Engine.Renderer
             }
 
             // Draw score and combo
+            // TODO: Skinning
             RenderText($"Score: {_score}", 10, 10, Color._textColor);
 
             if (_combo > 1)
@@ -384,12 +392,14 @@ namespace C4TX.SDL.Engine.Renderer
             }
 
             // Draw accuracy
+            // TODO: Skinning
             if (_totalNotes > 0)
             {
                 RenderText($"Accuracy: {_currentAccuracy:P2}", 10, 70, Color._textColor);
             }
 
             // Draw song info at the top
+            // TODO: Skinning
             if (_currentBeatmap != null)
             {
                 string songInfo = $"{_currentBeatmap.Artist} - {_currentBeatmap.Title} [{_currentBeatmap.Version}]";
@@ -397,6 +407,7 @@ namespace C4TX.SDL.Engine.Renderer
             }
 
             // Draw countdown if in start delay
+            // TODO: Skinning
             if (_currentTime < START_DELAY_MS)
             {
                 int countdown = (int)Math.Ceiling((START_DELAY_MS - _currentTime) / 1000.0);

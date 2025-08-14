@@ -7,7 +7,6 @@ using static SDL.SDL3;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using C4TX.SDL.LUI;
-using C4TX.SDL.LUI.Core;
 using System.Drawing;
 using static System.Net.Mime.MediaTypeNames;
 

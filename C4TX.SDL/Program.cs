@@ -31,6 +31,8 @@ namespace C4TX.SDL
                     return;
                 }
 
+                Clay.SetMaxElementCount(1000000);
+
                 using var arena = Clay.CreateArena(Clay.MinMemorySize());
 
                 Console.WriteLine("Initializing Clay...");
@@ -56,7 +58,7 @@ namespace C4TX.SDL
                 
                 // Scan for beatmaps (this will show loading animation during processing)
                 BeatmapEngine.ScanForBeatmaps();
-                
+
                 // Load available profiles
                 GameEngine._availableProfiles = GameEngine._profileService.GetAllProfiles();
                 
