@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using static SDL2.SDL;
+using SDL;
 
 namespace C4TX.SDL.Engine
 {

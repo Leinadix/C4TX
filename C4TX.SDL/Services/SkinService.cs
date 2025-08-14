@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using static SDL2.SDL;
+using static SDL.SDL3;
+using static SDL.SDL3_image;
 using System.Linq;
+using SDL;
 
 namespace C4TX.SDL.Services
 {
@@ -16,8 +18,8 @@ namespace C4TX.SDL.Services
     public class TextureInfo
     {
         public IntPtr Texture { get; set; } = IntPtr.Zero;
-        public int Width { get; set; } = 0;
-        public int Height { get; set; } = 0;
+        public float Width { get; set; } = 0;
+        public float Height { get; set; } = 0;
     }
     
     public class SkinService
@@ -203,7 +205,7 @@ namespace C4TX.SDL.Services
         }
         
         // Get texture dimensions for a specific note in a skin
-        public bool GetNoteTextureDimensions(string skinName, int noteIndex, out int width, out int height)
+        public bool GetNoteTextureDimensions(string skinName, int noteIndex, out float width, out float height)
         {
             width = 0;
             height = 0;
@@ -333,7 +335,7 @@ namespace C4TX.SDL.Services
         }
         
         // Load a texture from a file and get its dimensions
-        private TextureInfo LoadTextureWithDimensions(string filePath)
+        private unsafe TextureInfo LoadTextureWithDimensions(string filePath)
         {
             try
             {
@@ -355,14 +357,14 @@ namespace C4TX.SDL.Services
                 string normalizedPath = filePath.Replace('\\', '/');
                 
                 // Try to load with SDL_image
-                IntPtr surface = SDL2.SDL_image.IMG_Load(normalizedPath);
+                IntPtr surface = (IntPtr)IMG_Load(normalizedPath);
                 if (surface == IntPtr.Zero)
                 {
                     string error = GetSDLError();
                     Console.WriteLine($"[SKIN DEBUG] SDL IMG_Load failed: {normalizedPath}, Error: {error}");
                     
                     // Try again with direct path as fallback
-                    surface = SDL2.SDL_image.IMG_Load(filePath);
+                    surface = (IntPtr)IMG_Load(filePath);
                     if (surface == IntPtr.Zero)
                     {
                         error = GetSDLError();
@@ -374,10 +376,10 @@ namespace C4TX.SDL.Services
                 Console.WriteLine($"[SKIN DEBUG] SDL IMG_Load successful, surface: {surface}");
                 
                 // Create texture from surface
-                IntPtr texture = SDL2.SDL.SDL_CreateTextureFromSurface(_renderer, surface);
+                IntPtr texture = (IntPtr)SDL_CreateTextureFromSurface((SDL_Renderer*)_renderer, (SDL_Surface*)surface);
                 
                 // Free the surface
-                SDL2.SDL.SDL_FreeSurface(surface);
+                SDL_DestroySurface((SDL_Surface*)surface);
                 
                 if (texture == IntPtr.Zero)
                 {
@@ -389,10 +391,8 @@ namespace C4TX.SDL.Services
                 // Store texture pointer
                 textureInfo.Texture = texture;
                 
-                // Get dimensions using SDL_QueryTexture
-                uint format;
-                int access, width, height;
-                if (SDL_QueryTexture(texture, out format, out access, out width, out height) == 0)
+                float width, height;
+                if (SDL_GetTextureSize((SDL_Texture*)texture, &width, &height))
                 {
                     textureInfo.Width = width;
                     textureInfo.Height = height;
@@ -428,25 +428,25 @@ namespace C4TX.SDL.Services
         }
         
         // Helper methods to avoid namespace conflicts
-        private IntPtr CreateSDLTexture(IntPtr renderer, IntPtr surface)
+        private unsafe IntPtr CreateSDLTexture(IntPtr renderer, IntPtr surface)
         {
-            return SDL2.SDL.SDL_CreateTextureFromSurface(renderer, surface);
+            return (IntPtr)SDL_CreateTextureFromSurface((SDL_Renderer*)renderer, (SDL_Surface*)surface);
         }
         
-        private void FreeSDLSurface(IntPtr surface)
+        private unsafe void FreeSDLSurface(IntPtr surface)
         {
-            SDL2.SDL.SDL_FreeSurface(surface);
+            SDL_DestroySurface((SDL_Surface*)surface);
         }
         
-        private void DestroySDLTexture(IntPtr texture)
+        private unsafe void DestroySDLTexture(IntPtr texture)
         {
-            SDL2.SDL.SDL_DestroyTexture(texture);
+            SDL_DestroyTexture((SDL_Texture*)texture);
         }
         
         // Add GetSDLError helper method
         private string GetSDLError()
         {
-            return SDL2.SDL.SDL_GetError();
+            return SDL_GetError() ?? "Null error";
         }
     }
 } 

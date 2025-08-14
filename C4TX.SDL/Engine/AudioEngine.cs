@@ -455,6 +455,8 @@ namespace C4TX.SDL.Engine
         {
             GameEngine._currentRate = Math.Clamp(GameEngine._currentRate + change, GameEngine.MIN_RATE, GameEngine.MAX_RATE);
 
+            GameEngine._currentRate = (float)Math.Round((double)GameEngine._currentRate, 2);
+
             if (_mixerStream != 0)
             {
                 // BassFx uses tempo as percentage change from normal rate

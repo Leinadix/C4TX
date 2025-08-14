@@ -1,5 +1,5 @@
 using System.Text.Json.Serialization;
-using static SDL2.SDL;
+using SDL;
 
 namespace C4TX.SDL.Models
 {

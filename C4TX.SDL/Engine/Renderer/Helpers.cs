@@ -1,7 +1,8 @@
 ﻿using C4TX.SDL.KeyHandler;
 using C4TX.SDL.Models;
 using C4TX.SDL.Services;
-using SDL2;
+using static SDL.SDL3_image;
+using static SDL.SDL3;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,14 +10,15 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using static C4TX.SDL.Engine.GameEngine;
-using static SDL2.SDL;
 using static System.Formats.Asn1.AsnWriter;
+using SDL;
+using ManagedBass;
 
 namespace C4TX.SDL.Engine.Renderer
 {
-    public partial class RenderEngine
+    public unsafe partial class RenderEngine
     {
-        public static IntPtr LoadBackgroundTexture(string beatmapDir, string backgroundFilename)
+        public static IntPtr LoadBackgroundTexture(string beatmapDir, string backgroundFilename, float width, float height)
         {
             // Early exit if filename is empty
             if (string.IsNullOrEmpty(backgroundFilename))
@@ -93,27 +95,35 @@ namespace C4TX.SDL.Engine.Renderer
                 Console.WriteLine($"Loading background image: {backgroundPath}");
 
                 // Load the image
-                IntPtr surface = SDL_image.IMG_Load(backgroundPath);
-                if (surface == IntPtr.Zero)
+                var surface = SDL3_image.IMG_Load(backgroundPath);
+                if (surface == null)
                 {
                     Console.WriteLine($"Failed to load background image: {SDL_GetError()}");
                     return IntPtr.Zero;
                 }
 
-                // Create texture from surface
-                IntPtr texture = SDL_CreateTextureFromSurface(_renderer, surface);
-                SDL_FreeSurface(surface);
+                SDL_Rect rect = new()
+                {
+                    w = (int)width,
+                    h = (int)height
+                };
 
-                if (texture == IntPtr.Zero)
+                SDL_SetSurfaceClipRect(surface, &rect);
+
+                // Create texture from surface
+                var texture = SDL_CreateTextureFromSurface((SDL_Renderer*)(SDL_Renderer*)_renderer, surface);
+                SDL_DestroySurface(surface);
+
+                if (texture == null)
                 {
                     Console.WriteLine($"Failed to create texture from background image: {SDL_GetError()}");
                     return IntPtr.Zero;
                 }
 
                 // Cache the texture
-                _backgroundTextures[cacheKey] = texture;
+                _backgroundTextures[cacheKey] = (IntPtr)texture;
 
-                return texture;
+                return (IntPtr)texture;
             }
             catch (Exception ex)
             {
@@ -147,8 +157,8 @@ namespace C4TX.SDL.Engine.Renderer
                 }
 
                 // Load the font at different sizes
-                _font = SDL_ttf.TTF_OpenFont(fontPath, 16);
-                _largeFont = SDL_ttf.TTF_OpenFont(fontPath, 32);
+                _font = (IntPtr)SDL3_ttf.TTF_OpenFont(fontPath, 16);
+                _largeFont = (IntPtr)SDL3_ttf.TTF_OpenFont(fontPath, 32);
 
                 Console.WriteLine($"Loaded font: {fontPath}");
 
@@ -178,17 +188,21 @@ namespace C4TX.SDL.Engine.Renderer
             }
 
             IntPtr finalSurface;
+            int size = 0;
+
+            var bytes = StringToUtf8(text, out size);
 
             if (blackbar)
             {
                 SDL_Color black = new SDL_Color { r = 0, g = 0, b = 0, a = 255 };
 
-                // Render border (offset in multiple directions)
-                IntPtr surfaceBlack1 = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, black);
-                IntPtr surfaceBlack2 = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, black);
-                IntPtr surfaceBlack3 = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, black);
-                IntPtr surfaceBlack4 = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, black);
-                IntPtr surfaceMain = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, color);
+                
+
+                IntPtr surfaceBlack1 = (IntPtr)SDL3_ttf.TTF_RenderText_Blended((TTF_Font*)fontToUse, bytes, (nuint)size, black);
+                IntPtr surfaceBlack2 = (IntPtr)SDL3_ttf.TTF_RenderText_Blended((TTF_Font*)fontToUse, bytes, (nuint)size, black);
+                IntPtr surfaceBlack3 = (IntPtr)SDL3_ttf.TTF_RenderText_Blended((TTF_Font*)fontToUse, bytes, (nuint)size, black);
+                IntPtr surfaceBlack4 = (IntPtr)SDL3_ttf.TTF_RenderText_Blended((TTF_Font*)fontToUse, bytes, (nuint)size, black);
+                IntPtr surfaceMain = (IntPtr)SDL3_ttf.TTF_RenderText_Blended((TTF_Font*)fontToUse, bytes, (nuint)size, color);
 
                 if (surfaceBlack1 == IntPtr.Zero || surfaceMain == IntPtr.Zero)
                 {
@@ -197,33 +211,34 @@ namespace C4TX.SDL.Engine.Renderer
 
                 // Create a larger surface to hold the border + main text
                 SDL_Surface textSurface = Marshal.PtrToStructure<SDL_Surface>(surfaceMain);
-                finalSurface = SDL_CreateRGBSurface(0, textSurface.w + 2, textSurface.h + 2, 32, 0, 0, 0, 0);
+                var format = SDL_GetPixelFormatForMasks(32, 0, 0, 0, 0);
+                finalSurface = (nint)SDL_CreateSurface(textSurface.w + 2, textSurface.h + 2, format);
 
                 // Blit black border in different directions
                 SDL_Rect offset = new();
                 offset.x = 1;
-                offset.y = 0; SDL_BlitSurface(surfaceBlack1, IntPtr.Zero, finalSurface, ref offset);
+                offset.y = 0; SDL_BlitSurface((SDL_Surface*)surfaceBlack1, null, (SDL_Surface*)finalSurface, & offset);
                 offset.x = -1;
-                offset.y = 0; SDL_BlitSurface(surfaceBlack2, IntPtr.Zero, finalSurface, ref offset);
+                offset.y = 0; SDL_BlitSurface((SDL_Surface*)surfaceBlack2, null, (SDL_Surface*)finalSurface, & offset);
                 offset.x = 0;
-                offset.y = 1; SDL_BlitSurface(surfaceBlack3, IntPtr.Zero, finalSurface, ref offset);
+                offset.y = 1; SDL_BlitSurface((SDL_Surface*)surfaceBlack3, null, (SDL_Surface*)finalSurface, & offset);
                 offset.x = 0;
-                offset.y = -1; SDL_BlitSurface(surfaceBlack4, IntPtr.Zero, finalSurface, ref offset);
+                offset.y = -1; SDL_BlitSurface((SDL_Surface*)surfaceBlack4, null, (SDL_Surface*)finalSurface, & offset);
 
                 // Blit main text in the center
                 offset.x = 1; offset.y = 1;
-                SDL_BlitSurface(surfaceMain, IntPtr.Zero, finalSurface, ref offset);
+                SDL_BlitSurface((SDL_Surface*)surfaceMain, null, (SDL_Surface*)finalSurface, & offset);
 
                 // Free temporary surfaces
-                SDL_FreeSurface(surfaceBlack1);
-                SDL_FreeSurface(surfaceBlack2);
-                SDL_FreeSurface(surfaceBlack3);
-                SDL_FreeSurface(surfaceBlack4);
-                SDL_FreeSurface(surfaceMain);
+                SDL_DestroySurface((SDL_Surface*)surfaceBlack1);
+                SDL_DestroySurface((SDL_Surface*)surfaceBlack2);
+                SDL_DestroySurface((SDL_Surface*)surfaceBlack3);
+                SDL_DestroySurface((SDL_Surface*)surfaceBlack4);
+                SDL_DestroySurface((SDL_Surface*)surfaceMain);
             }
             else
             {
-                finalSurface = SDL_ttf.TTF_RenderUNICODE_Blended(fontToUse, text, color);
+                finalSurface = (nint)SDL3_ttf.TTF_RenderText_Blended((TTF_Font*)fontToUse, bytes, (nuint)size, color);
             }
 
             if (finalSurface == IntPtr.Zero)
@@ -231,8 +246,8 @@ namespace C4TX.SDL.Engine.Renderer
                 return IntPtr.Zero;
             }
 
-            IntPtr texture = SDL_CreateTextureFromSurface(_renderer, finalSurface);
-            SDL_FreeSurface(finalSurface);
+            IntPtr texture = (nint)SDL_CreateTextureFromSurface((SDL_Renderer*)_renderer, (SDL_Surface*)finalSurface);
+            SDL_DestroySurface((SDL_Surface*)finalSurface);
 
             // Cache the texture
             _textTextures[key] = texture;
@@ -247,13 +262,12 @@ namespace C4TX.SDL.Engine.Renderer
                 return;
             }
 
-            // Get the texture dimensions
-            uint format;
-            int access, width, height;
-            SDL_QueryTexture(textTexture, out format, out access, out width, out height);
+
+            float width, height;
+            SDL_GetTextureSize((SDL_Texture*)textTexture, &width, &height);
 
             // Set the destination rectangle
-            SDL_Rect destRect = new SDL_Rect
+            SDL_FRect destRect = new SDL_FRect
             {
                 x = centered ? x - width / 2 : x,
                 y = centered ? y - height / 2 : y,
@@ -262,7 +276,7 @@ namespace C4TX.SDL.Engine.Renderer
             };
 
             // Render the texture+
-            SDL_RenderCopy(_renderer, textTexture, IntPtr.Zero, ref destRect);
+            SDL_RenderTexture((SDL_Renderer*)_renderer, (SDL_Texture*)textTexture, null, & destRect);
         }
         public static void ToggleFullscreen()
         {
@@ -275,12 +289,9 @@ namespace C4TX.SDL.Engine.Renderer
             if (_isFullscreen)
             {
                 // Get the current display mode
-                SDL_DisplayMode displayMode;
-                SDL_GetCurrentDisplayMode(0, out displayMode);
+                SDL_DisplayMode* displayMode = SDL_GetCurrentDisplayMode(SDL_GetPrimaryDisplay());
 
-                // Set window to fullscreen mode
-                SDL_SetWindowDisplayMode(_window, ref displayMode);
-                SDL_SetWindowFullscreen(_window, (uint)SDL_WindowFlags.SDL_WINDOW_FULLSCREEN_DESKTOP);
+                SDL_SetWindowFullscreen((SDL_Window*)_window, true);
             }
             else
             {
@@ -290,19 +301,19 @@ namespace C4TX.SDL.Engine.Renderer
                     w = _windowWidth,
                     h = _windowHeight,
                     refresh_rate = 60,
-                    format = SDL_PIXELFORMAT_RGBA8888
+                    format = SDL_PixelFormat.SDL_PIXELFORMAT_RGBA8888
                 };
 
-                SDL_SetWindowDisplayMode(_window, ref displayMode);
-                SDL_SetWindowFullscreen(_window, 0);
+                SDL_SetWindowFullscreenMode((SDL_Window*)_window, & displayMode);
+                SDL_SetWindowFullscreen((SDL_Window*)_window, false);
 
                 // Ensure window is centered
-                SDL_SetWindowPosition(_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                SDL_SetWindowPosition((SDL_Window*)_window, (int)SDL_WINDOWPOS_CENTERED, (int)SDL_WINDOWPOS_CENTERED);
             }
 
             // Get the actual window size (which may have changed in fullscreen mode)
             int w, h;
-            SDL_GetWindowSize(_window, out w, out h);
+            SDL_GetWindowSize((SDL_Window*)_window, & w, & h);
             _windowWidth = w;
             _windowHeight = h;
 
@@ -318,7 +329,7 @@ namespace C4TX.SDL.Engine.Renderer
             {
                 if (texture != IntPtr.Zero)
                 {
-                    SDL_DestroyTexture(texture);
+                    SDL_DestroyTexture((SDL_Texture*)texture);
                 }
             }
             _textTextures.Clear();
@@ -326,10 +337,10 @@ namespace C4TX.SDL.Engine.Renderer
         public static void DrawPanel(int x, int y, int width, int height, SDL_Color bgColor, SDL_Color borderColor, int borderSize = PANEL_BORDER_SIZE)
         {
             // Draw filled background
-            SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(_renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
+            SDL_SetRenderDrawBlendMode((SDL_Renderer*)_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, bgColor.r, bgColor.g, bgColor.b, bgColor.a);
 
-            SDL_Rect panelRect = new SDL_Rect
+            SDL_FRect panelRect = new SDL_FRect
             {
                 x = x,
                 y = y,
@@ -337,28 +348,28 @@ namespace C4TX.SDL.Engine.Renderer
                 h = height
             };
 
-            SDL_RenderFillRect(_renderer, ref panelRect);
+            SDL_RenderFillRect((SDL_Renderer*)_renderer, & panelRect);
 
             // Draw border (simplified version without actual rounding)
             if (borderSize > 0)
             {
-                SDL_SetRenderDrawColor(_renderer, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, borderColor.r, borderColor.g, borderColor.b, borderColor.a);
 
                 // Top border
-                SDL_Rect topBorder = new SDL_Rect { x = x, y = y, w = width, h = borderSize };
-                SDL_RenderFillRect(_renderer, ref topBorder);
+                SDL_FRect topBorder = new SDL_FRect { x = x, y = y, w = width, h = borderSize };
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & topBorder);
 
                 // Bottom border
-                SDL_Rect bottomBorder = new SDL_Rect { x = x, y = y + height - borderSize, w = width, h = borderSize };
-                SDL_RenderFillRect(_renderer, ref bottomBorder);
+                SDL_FRect bottomBorder = new SDL_FRect { x = x, y = y + height - borderSize, w = width, h = borderSize };
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & bottomBorder);
 
                 // Left border
-                SDL_Rect leftBorder = new SDL_Rect { x = x, y = y + borderSize, w = borderSize, h = height - 2 * borderSize };
-                SDL_RenderFillRect(_renderer, ref leftBorder);
+                SDL_FRect leftBorder = new SDL_FRect { x = x, y = y + borderSize, w = borderSize, h = height - 2 * borderSize };
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & leftBorder);
 
                 // Right border
-                SDL_Rect rightBorder = new SDL_Rect { x = x + width - borderSize, y = y + borderSize, w = borderSize, h = height - 2 * borderSize };
-                SDL_RenderFillRect(_renderer, ref rightBorder);
+                SDL_FRect rightBorder = new SDL_FRect { x = x + width - borderSize, y = y + borderSize, w = borderSize, h = height - 2 * borderSize };
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & rightBorder);
             }
         }
         public static void DrawButton(string text, int x, int y, int width, int height, SDL_Color bgColor, SDL_Color textColor, bool centered = true, bool isSelected = false)
@@ -387,15 +398,15 @@ namespace C4TX.SDL.Engine.Renderer
             int sliderPosition = (int)(width * normalizedValue);
 
             // Draw slider handle
-            SDL_Rect sliderHandle = new SDL_Rect
+            SDL_FRect sliderHandle = new SDL_FRect
             {
                 x = x + sliderPosition - 8,
                 y = y - 12,
                 w = 16,
                 h = 24
             };
-            SDL_SetRenderDrawColor(_renderer, Color._highlightColor.r, Color._highlightColor.g, Color._highlightColor.b, 255);
-            SDL_RenderFillRect(_renderer, ref sliderHandle);
+            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._highlightColor.r, Color._highlightColor.g, Color._highlightColor.b, 255);
+            SDL_RenderFillRect((SDL_Renderer*)_renderer, &sliderHandle);
         }
         public static List<(int Index, int Type)> GetSongListItems()
         {
@@ -404,6 +415,25 @@ namespace C4TX.SDL.Engine.Renderer
         public static void ClearCachedSongListItems()
         {
             _cachedSongListItems.Clear();
+        }
+
+        public static unsafe byte* StringToUtf8(string s, out int size)
+        {
+            if (s == null)
+            {
+                size = 0;
+                return null;
+            }
+
+            byte[] utf8 = Encoding.UTF8.GetBytes(s);
+            size = utf8.Length;
+
+            IntPtr mem = Marshal.AllocHGlobal(size + 1);
+            Marshal.Copy(utf8, 0, mem, size);
+
+            ((byte*)mem)[size] = 0;
+
+            return (byte*)mem;
         }
     }
 }

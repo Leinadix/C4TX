@@ -1,7 +1,6 @@
 ﻿using C4TX.SDL.KeyHandler;
 using C4TX.SDL.Models;
 using C4TX.SDL.Services;
-using SDL2;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,17 +8,18 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using static C4TX.SDL.Engine.GameEngine;
-using static SDL2.SDL;
+using SDL;
 using static System.Formats.Asn1.AsnWriter;
+using static SDL.SDL3;
 
 namespace C4TX.SDL.Engine.Renderer
 {
     public partial class RenderEngine
     {
-        public static void RenderResults()
+        public static unsafe void RenderResults()
         {
             // Draw background
-            DrawMenuBackground();
+            // DrawMenuBackground();
 
             // Create a main panel for results
             int panelWidth = (int)(_windowWidth * 0.95);
@@ -33,15 +33,15 @@ namespace C4TX.SDL.Engine.Renderer
             RenderText("Results", _windowWidth / 2, panelY + 30, Color._accentColor, true, true);
 
             // Horizontal separator
-            SDL_SetRenderDrawColor(_renderer, Color._primaryColor.r, Color._primaryColor.g, Color._primaryColor.b, 150);
-            SDL_Rect separatorLine = new SDL_Rect
+            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._primaryColor.r, Color._primaryColor.g, Color._primaryColor.b, 150);
+            SDL_FRect separatorLine = new SDL_FRect
             {
                 x = panelX + 50,
                 y = panelY + 60,
                 w = panelWidth - 100,
                 h = 2
             };
-            SDL_RenderFillRect(_renderer, ref separatorLine);
+            SDL_RenderFillRect((SDL_Renderer*)_renderer, & separatorLine);
 
             // Check if we're displaying a replay or live results
             bool isReplay = _noteHits.Count == 0 && _selectedScore != null && _selectedScore.NoteHits.Count > 0;
@@ -198,24 +198,24 @@ namespace C4TX.SDL.Engine.Renderer
                 int graphInnerHeight = (int)(graphHeight - graphInnerPadding * 1.8);
 
                 // Draw graph background
-                SDL_SetRenderDrawColor(_renderer, 35, 35, 55, 255);
-                SDL_Rect graphRect = new SDL_Rect
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 35, 35, 55, 255);
+                SDL_FRect graphRect = new SDL_FRect
                 {
                     x = graphInnerX,
                     y = graphInnerY,
                     w = graphInnerWidth,
                     h = graphInnerHeight
                 };
-                SDL_RenderFillRect(_renderer, ref graphRect);
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & graphRect);
 
                 // Draw grid lines
-                SDL_SetRenderDrawColor(_renderer, 60, 60, 80, 150);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 60, 60, 80, 150);
 
                 // Vertical grid lines (every 10 seconds)
                 for (int i = 0; i <= 10; i++)
                 {
                     int x = graphInnerX + i * graphInnerWidth / 10;
-                    SDL_RenderDrawLine(_renderer, x, graphInnerY, x, graphInnerY + graphInnerHeight);
+                    SDL_RenderLine((SDL_Renderer*)_renderer, x, graphInnerY, x, graphInnerY + graphInnerHeight);
 
                     // Draw time labels - smaller and more subtle
                     int seconds = i * 10;
@@ -237,7 +237,7 @@ namespace C4TX.SDL.Engine.Renderer
                 foreach (var marker in msMarkers)
                 {
                     int y = graphInnerY + (int)(graphInnerHeight / 2 + marker.YOffset * graphInnerHeight / 2);
-                    SDL_RenderDrawLine(_renderer, graphInnerX, y, graphInnerX + graphInnerWidth, y);
+                    SDL_RenderLine((SDL_Renderer*)_renderer, graphInnerX, y, graphInnerX + graphInnerWidth, y);
 
                     // Draw ms labels - aligned to the left of the graph
                     SDL_Color msColor = new SDL_Color { r = 150, g = 150, b = 170, a = 255 };
@@ -245,9 +245,9 @@ namespace C4TX.SDL.Engine.Renderer
                 }
 
                 // Draw center line
-                SDL_SetRenderDrawColor(_renderer, 180, 180, 180, 200);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 180, 180, 180, 200);
                 int centerY = graphInnerY + graphInnerHeight / 2;
-                SDL_RenderDrawLine(_renderer, graphInnerX, centerY, graphInnerX + graphInnerWidth, centerY);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphInnerX, centerY, graphInnerX + graphInnerWidth, centerY);
 
                 // Draw accuracy model visualization
                 DrawAccuracyModelVisualization(graphInnerX, graphInnerY, graphInnerWidth, graphInnerHeight, centerY);
@@ -301,10 +301,10 @@ namespace C4TX.SDL.Engine.Renderer
                     else
                         dotColor = new SDL_Color { r = 255, g = 50, b = 50, a = 255 }; // Red - Miss
 
-                    SDL_SetRenderDrawColor(_renderer, dotColor.r, dotColor.g, dotColor.b, dotColor.a);
+                    SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, dotColor.r, dotColor.g, dotColor.b, dotColor.a);
 
                     // Draw slightly larger dots for better visibility
-                    SDL_Rect pointRect = new SDL_Rect
+                    SDL_FRect pointRect = new SDL_FRect
                     {
                         x = x - 3,
                         y = y - 3,
@@ -312,7 +312,7 @@ namespace C4TX.SDL.Engine.Renderer
                         h = 6
                     };
 
-                    SDL_RenderFillRect(_renderer, ref pointRect);
+                    SDL_RenderFillRect((SDL_Renderer*)_renderer, & pointRect);
                 }
 
                 // Bottom section - hit statistics and details
@@ -332,21 +332,21 @@ namespace C4TX.SDL.Engine.Renderer
                 int legendItemWidth = legendWidth / 3;
 
                 // Early hits (red)
-                SDL_SetRenderDrawColor(_renderer, 255, 50, 50, 255);
-                SDL_Rect earlyRect = new SDL_Rect { x = legendX + 40, y = legendY + 5, w = 10, h = 10 };
-                SDL_RenderFillRect(_renderer, ref earlyRect);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 255, 50, 50, 255);
+                SDL_FRect earlyRect = new SDL_FRect { x = legendX + 40, y = legendY + 5, w = 10, h = 10 };
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & earlyRect);
                 RenderText("Early hits", legendX + 100, legendY + 10, Color._mutedTextColor, false, false);
 
                 // Perfect hits (white)
-                SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 255);
-                SDL_Rect perfectRect = new SDL_Rect { x = legendX + legendItemWidth + 40, y = legendY + 5, w = 10, h = 10 };
-                SDL_RenderFillRect(_renderer, ref perfectRect);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 255, 255, 255, 255);
+                SDL_FRect perfectRect = new SDL_FRect { x = legendX + legendItemWidth + 40, y = legendY + 5, w = 10, h = 10 };
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & perfectRect);
                 RenderText("Perfect hits", legendX + legendItemWidth + 100, legendY + 10, Color._mutedTextColor, false, false);
 
                 // Late hits (green)
-                SDL_SetRenderDrawColor(_renderer, 50, 255, 50, 255);
-                SDL_Rect lateRect = new SDL_Rect { x = legendX + 2 * legendItemWidth + 40, y = legendY + 5, w = 10, h = 10 };
-                SDL_RenderFillRect(_renderer, ref lateRect);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 50, 255, 50, 255);
+                SDL_FRect lateRect = new SDL_FRect { x = legendX + 2 * legendItemWidth + 40, y = legendY + 5, w = 10, h = 10 };
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & lateRect);
                 RenderText("Late hits", legendX + 2 * legendItemWidth + 100, legendY + 10, Color._mutedTextColor, false, false);
 
                 // Draw model description 
@@ -404,8 +404,6 @@ namespace C4TX.SDL.Engine.Renderer
             DrawButton("Return to Menu [ENTER]", menuButtonX, buttonY, buttonWidth, buttonHeight,
                 new SDL_Color { r = 20, g = 20, b = 40, a = 255 }, Color._textColor);
         }
-
-        // Helper method to calculate judgment counts
         private static Dictionary<string, int> CalculateJudgmentCounts(List<(double NoteTime, double HitTime, double Deviation)> hitData)
         {
             var counts = new Dictionary<string, int>
@@ -453,8 +451,6 @@ namespace C4TX.SDL.Engine.Renderer
 
             return counts;
         }
-
-        // Helper method to draw judgment counts panel
         private static void DrawJudgmentCounts(int x, int y, int width, int rowHeight, Dictionary<string, int> judgmentCounts)
         {
             int labelX = x + 20;
@@ -484,8 +480,6 @@ namespace C4TX.SDL.Engine.Renderer
                 RenderText(count.ToString(), countX, y + i * rowHeight, color, false, true);
             }
         }
-
-        // Helper method to get accuracy model description
         private static string GetAccuracyModelDescription()
         {
             switch (_resultScreenAccuracyModel)
@@ -506,12 +500,10 @@ namespace C4TX.SDL.Engine.Renderer
                     return "Unknown accuracy model";
             }
         }
-
-        // Draw visualization of the current accuracy model
-        public static void DrawAccuracyModelVisualization(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        public static unsafe void DrawAccuracyModelVisualization(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
         {
             // Set up visualization properties
-            SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawBlendMode((SDL_Renderer*)_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
 
             // Draw judgment boundary lines based on the current model
             switch (_resultScreenAccuracyModel)
@@ -536,9 +528,7 @@ namespace C4TX.SDL.Engine.Renderer
                     break;
             }
         }
-
-        // Draw Linear model judgment boundaries
-        public static void DrawLinearJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        public static unsafe void DrawLinearJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
         {
             // Linear model judgment thresholds (as percentage of hit window)
             double[] thresholds = {
@@ -565,21 +555,19 @@ namespace C4TX.SDL.Engine.Renderer
 
                 // Draw positive threshold line (late hits)
                 int posY = centerY - pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, posY, graphX + graphWidth, posY);
 
                 // Draw negative threshold line (early hits)
                 int negY = centerY + pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, negY, graphX + graphWidth, negY);
             }
 
             // Draw explanation
             RenderText("Linear: Equal accuracy weight across entire hit window", graphX + graphWidth / 2, graphY + graphHeight + 70, Color._textColor, false, true);
         }
-
-        // Draw Quadratic model judgment boundaries
-        public static void DrawQuadraticJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        public static unsafe void DrawQuadraticJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
         {
             // Quadratic model has different judgment thresholds (uses normalized = sqrt(accuracy))
             double[] thresholds = {
@@ -606,21 +594,19 @@ namespace C4TX.SDL.Engine.Renderer
 
                 // Draw positive threshold line (late hits)
                 int posY = centerY - pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, posY, graphX + graphWidth, posY);
 
                 // Draw negative threshold line (early hits)
                 int negY = centerY + pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, negY, graphX + graphWidth, negY);
             }
 
             // Draw explanation
             RenderText("Quadratic: Accuracy decreases more rapidly as timing deviation increases", graphX + graphWidth / 2, graphY + graphHeight + 70, Color._textColor, false, true);
-        }
-
-        // Draw Stepwise model judgment boundaries 
-        public static void DrawStepwiseJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        } 
+        public static unsafe void DrawStepwiseJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
         {
             // Stepwise model has exact judgment thresholds (percentage of hit window)
             double[] thresholds = {
@@ -645,21 +631,19 @@ namespace C4TX.SDL.Engine.Renderer
 
                 // Draw positive threshold line (late hits)
                 int posY = centerY - pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, posY, graphX + graphWidth, posY);
 
                 // Draw negative threshold line (early hits)
                 int negY = centerY + pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, negY, graphX + graphWidth, negY);
             }
 
             // Draw explanation
             RenderText("Stepwise: Discrete accuracy bands with clear thresholds", graphX + graphWidth / 2, graphY + graphHeight + 70, Color._textColor, false, true);
         }
-
-        // Draw Exponential model judgment boundaries
-        public static void DrawExponentialJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        public static unsafe void DrawExponentialJudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
         {
             // Exponential model judgment thresholds
             // Solving for Math.Exp(-5.0 * x) = threshold
@@ -692,21 +676,19 @@ namespace C4TX.SDL.Engine.Renderer
 
                 // Draw positive threshold line (late hits)
                 int posY = centerY - pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, posY, graphX + graphWidth, posY);
 
                 // Draw negative threshold line (early hits)
                 int negY = centerY + pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, negY, graphX + graphWidth, negY);
             }
 
             // Draw explanation
             RenderText("Exponential: Accuracy decreases exponentially with timing deviation", graphX + graphWidth / 2, graphY + graphHeight + 70, Color._textColor, false, true);
         }
-
-        // Draw osu! OD8 judgment boundaries
-        public static void DrawOsuOD8JudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        public static unsafe void DrawOsuOD8JudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
         {
             // osu! OD8 hit window thresholds in milliseconds
             double[] msThresholds = {
@@ -733,21 +715,19 @@ namespace C4TX.SDL.Engine.Renderer
 
                 // Draw positive threshold line (late hits)
                 int posY = centerY - pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, posY, graphX + graphWidth, posY);
 
                 // Draw negative threshold line (early hits)
                 int negY = centerY + pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, negY, graphX + graphWidth, negY);
             }
 
             // Draw explanation
             RenderText("osu! OD8: Based on osu! standard timing windows", graphX + graphWidth / 2, graphY + graphHeight + 70, Color._textColor, false, true);
         }
-
-        // Draw osu! OD8 v1 judgment boundaries (early implementation)
-        public static void DrawOsuOD8V1JudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
+        public static unsafe void DrawOsuOD8V1JudgmentBoundaries(int graphX, int graphY, int graphWidth, int graphHeight, int centerY)
         {
             // osu! v1 OD8 hit window thresholds in milliseconds
             double[] msThresholds = {
@@ -774,19 +754,18 @@ namespace C4TX.SDL.Engine.Renderer
 
                 // Draw positive threshold line (late hits)
                 int posY = centerY - pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, posY, graphX + graphWidth, posY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, posY, graphX + graphWidth, posY);
 
                 // Draw negative threshold line (early hits)
                 int negY = centerY + pixelOffset;
-                SDL_SetRenderDrawColor(_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
-                SDL_RenderDrawLine(_renderer, graphX, negY, graphX + graphWidth, negY);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, colors[i].r, colors[i].g, colors[i].b, colors[i].a);
+                SDL_RenderLine((SDL_Renderer*)_renderer, graphX, negY, graphX + graphWidth, negY);
             }
 
             // Draw explanation
             RenderText("osu! OD8 v1: Early osu! timing implementation", graphX + graphWidth / 2, graphY + graphHeight + 70, Color._textColor, false, true);
         }
-
         private static Dictionary<string, string> CalculateJudgmentTimingBoundaries()
         {
             var timings = new Dictionary<string, string>();
@@ -809,7 +788,6 @@ namespace C4TX.SDL.Engine.Renderer
 
             return timings;
         }
-
         private static double FindTimingForAccuracy(AccuracyService service, double targetAccuracy)
         {
             // For most models, we can calculate this directly

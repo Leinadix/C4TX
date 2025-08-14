@@ -2,7 +2,8 @@
 using C4TX.SDL.Models;
 using C4TX.SDL.Services;
 using static C4TX.SDL.Engine.GameEngine;
-using static SDL2.SDL;
+using SDL;
+using static SDL.SDL3;
 
 namespace C4TX.SDL.Engine
 {
@@ -106,10 +107,10 @@ namespace C4TX.SDL.Engine
         // Helper method to get the current beatmap ID that matches the one used in the menu
         public static string GetCurrentBeatmapId()
         {
-            if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
-                _selectedDifficultyIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count)
+            if (_availableBeatmapSets != null && _selectedSetIndex >= 0 &&
+                _selectedDifficultyIndex >= 0 && _selectedSetIndex < _availableBeatmapSets.Count)
             {
-                var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+                var currentMapset = _availableBeatmapSets[_selectedSetIndex];
                 if (_selectedDifficultyIndex < currentMapset.Beatmaps.Count)
                 {
                     return currentMapset.Beatmaps[_selectedDifficultyIndex].Id;
@@ -123,9 +124,9 @@ namespace C4TX.SDL.Engine
         // Helper method to get the current beatmap set ID
         public static string GetCurrentBeatmapSetId()
         {
-            if (_availableBeatmapSets != null && _selectedSongIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count)
+            if (_availableBeatmapSets != null && _selectedSetIndex >= 0 && _selectedSetIndex < _availableBeatmapSets.Count)
             {
-                return _availableBeatmapSets[_selectedSongIndex].Id;
+                return _availableBeatmapSets[_selectedSetIndex].Id;
             }
             return string.Empty;
         }
@@ -165,10 +166,10 @@ namespace C4TX.SDL.Engine
             }
 
             // If not available directly, try to calculate it from the file
-            if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
-                _selectedDifficultyIndex >= 0 && _selectedSongIndex < _availableBeatmapSets.Count)
+            if (_availableBeatmapSets != null && _selectedSetIndex >= 0 &&
+                _selectedDifficultyIndex >= 0 && _selectedSetIndex < _availableBeatmapSets.Count)
             {
-                var currentMapset = _availableBeatmapSets[_selectedSongIndex];
+                var currentMapset = _availableBeatmapSets[_selectedSetIndex];
                 if (_selectedDifficultyIndex < currentMapset.Beatmaps.Count)
                 {
                     string beatmapPath = currentMapset.Beatmaps[_selectedDifficultyIndex].Path;
@@ -181,12 +182,12 @@ namespace C4TX.SDL.Engine
         // Helper method to get the currently selected beatmap info
         public static BeatmapInfo? GetSelectedBeatmapInfo()
         {
-            if (_availableBeatmapSets != null && _selectedSongIndex >= 0 &&
-                _selectedSongIndex < _availableBeatmapSets.Count &&
+            if (_availableBeatmapSets != null && _selectedSetIndex >= 0 &&
+                _selectedSetIndex < _availableBeatmapSets.Count &&
                 _selectedDifficultyIndex >= 0 &&
-                _selectedDifficultyIndex < _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+                _selectedDifficultyIndex < _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
             {
-                return _availableBeatmapSets[_selectedSongIndex].Beatmaps[_selectedDifficultyIndex];
+                return _availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex];
             }
             return null;
         }
@@ -377,7 +378,7 @@ namespace C4TX.SDL.Engine
                 if (_availableBeatmapSets.Count > 0 && _availableBeatmapSets[0].Beatmaps.Count > 0)
                 {
                     LoadBeatmap(_availableBeatmapSets[0].Beatmaps[0].Path);
-                    _selectedSongIndex = 0; // Initialize selected song
+                    _selectedSetIndex = 0; // Initialize selected song
                     _selectedDifficultyIndex = 0; // Initialize selected difficulty
                 }
 
@@ -679,14 +680,14 @@ namespace C4TX.SDL.Engine
         public static void RefreshSelectedBeatmapFromDatabase()
         {
             if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0 || 
-                _selectedSongIndex < 0 || _selectedSongIndex >= _availableBeatmapSets.Count ||
-                _selectedDifficultyIndex < 0 || _selectedDifficultyIndex >= _availableBeatmapSets[_selectedSongIndex].Beatmaps.Count)
+                _selectedSetIndex < 0 || _selectedSetIndex >= _availableBeatmapSets.Count ||
+                _selectedDifficultyIndex < 0 || _selectedDifficultyIndex >= _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
             {
                 return;  // Nothing to refresh
             }
 
             // Get the selected set and beatmap
-            var selectedSet = _availableBeatmapSets[_selectedSongIndex];
+            var selectedSet = _availableBeatmapSets[_selectedSetIndex];
             var selectedBeatmap = selectedSet.Beatmaps[_selectedDifficultyIndex];
 
             if (string.IsNullOrEmpty(selectedBeatmap.Id) || string.IsNullOrEmpty(selectedSet.Id))

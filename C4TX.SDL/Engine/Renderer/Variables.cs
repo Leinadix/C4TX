@@ -1,8 +1,8 @@
-﻿using static SDL2.SDL;
+﻿using SDL;
 
 namespace C4TX.SDL.Engine.Renderer
 {
-    public partial class RenderEngine
+    public unsafe partial class RenderEngine
     {
         // SDL related variables
         public static IntPtr _window;
@@ -12,6 +12,7 @@ namespace C4TX.SDL.Engine.Renderer
         public static bool _isRunning = false;
         public static bool _isFullscreen = false;
         public static Dictionary<int, IntPtr> _textures = new Dictionary<int, IntPtr>();
+        public static IntPtr _textEngine;
 
         // UI Layout constants
         public const int PANEL_PADDING = 20;
@@ -20,11 +21,11 @@ namespace C4TX.SDL.Engine.Renderer
         public const int PANEL_BORDER_SIZE = 2;
 
         // FPS counter tracking
-        private static int _frameCount = 0;
-        private static double _lastFpsUpdateTime = 0;
-        private static double _currentFps = 0;
-        private static double _currentFrameTime = 0;
-        private static readonly double _fpsUpdateInterval = 1000; // Update FPS display every 1 second
+        public static int _frameCount = 0;
+        public static double _lastFpsUpdateTime = 0;
+        public static double _currentFps = 0;
+        public static double _currentFrameTime = 0;
+        public static readonly double _fpsUpdateInterval = 1000; // Update FPS display every 1 second
 
         // For volume display
         public static double _volumeChangeTime = 0;
@@ -44,6 +45,6 @@ namespace C4TX.SDL.Engine.Renderer
         private static IntPtr _currentMenuBackgroundTexture = IntPtr.Zero;
 
         // Store song list items for navigation
-        private static List<(int Index, int Type)> _cachedSongListItems = new List<(int Index, int Type)>();
+        public static List<(int Index, int Type)> _cachedSongListItems = new List<(int Index, int Type)>();
     }
 }

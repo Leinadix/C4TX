@@ -1,6 +1,7 @@
 ﻿using C4TX.SDL.Models;
 using static C4TX.SDL.Engine.GameEngine;
-using static SDL2.SDL;
+using SDL;
+using static SDL.SDL3;
 
 namespace C4TX.SDL.Engine.Renderer
 {
@@ -35,31 +36,31 @@ namespace C4TX.SDL.Engine.Renderer
             // Update note speed based on setting
             _noteSpeed = _noteSpeedSetting / 1000.0; // Convert to percentage per millisecond
         }
-        public static void RenderGameplay()
+        public static unsafe void RenderGameplay()
         {
             if (_showSeperatorLines)
             {
                 // Draw lane dividers
-                SDL_SetRenderDrawColor(_renderer, 100, 100, 100, 255);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 100, 100, 100, 255);
                 for (int i = 0; i <= 4; i++)
                 {
                     int x = _lanePositions[0] - (_laneWidth / 2) + (i * _laneWidth);
-                    SDL_RenderDrawLine(_renderer, x, 0, x, _windowHeight);
+                    SDL_RenderLine((SDL_Renderer*)_renderer, x, 0, x, _windowHeight);
                 }
             }
 
 
             // Draw hit position line
-            SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 255);
+            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 255, 255, 255, 255);
             int lineStartX = _lanePositions[0] - (_laneWidth / 2);
             int lineEndX = _lanePositions[3] + (_laneWidth / 2);
-            SDL_RenderDrawLine(_renderer, lineStartX, _hitPosition, lineEndX, _hitPosition);
+            SDL_RenderLine((SDL_Renderer*)_renderer, lineStartX, _hitPosition, lineEndX, _hitPosition);
 
 
             // Draw lane keys
             for (int i = 0; i < 4; i++)
             {
-                SDL_Rect rect = new SDL_Rect
+                SDL_FRect rect = new SDL_FRect
                 {
                     x = _lanePositions[i] - (_laneWidth / 2),
                     y = _hitPosition,
@@ -71,10 +72,10 @@ namespace C4TX.SDL.Engine.Renderer
                 if (_keyStates[i] == 1)
                 {
                     // Key is pressed - use lane color with full brightness
-                    SDL_SetRenderDrawColor(_renderer, Color._laneColors[i].r, Color._laneColors[i].g, Color._laneColors[i].b, Color._laneColors[i].a);
+                    SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._laneColors[i].r, Color._laneColors[i].g, Color._laneColors[i].b, Color._laneColors[i].a);
 
                     // Add glow effect when key is pressed
-                    SDL_Rect glowRect = new SDL_Rect
+                    SDL_FRect glowRect = new SDL_FRect
                     {
                         x = rect.x - 3,
                         y = rect.y - 3,
@@ -83,27 +84,27 @@ namespace C4TX.SDL.Engine.Renderer
                     };
 
                     // Draw outer glow (semi-transparent)
-                    SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
-                    SDL_SetRenderDrawColor(_renderer, Color._laneColors[i].r, Color._laneColors[i].g, Color._laneColors[i].b, 100);
-                    SDL_RenderFillRect(_renderer, ref glowRect);
+                    SDL_SetRenderDrawBlendMode((SDL_Renderer*)_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
+                    SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._laneColors[i].r, Color._laneColors[i].g, Color._laneColors[i].b, 100);
+                    SDL_RenderFillRect((SDL_Renderer*)_renderer, & glowRect);
 
                     // Reset blend mode
-                    SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_NONE);
+                    SDL_SetRenderDrawBlendMode((SDL_Renderer*)_renderer, SDL_BlendMode.SDL_BLENDMODE_NONE);
 
                     // Draw actual key with full color
-                    SDL_SetRenderDrawColor(_renderer, Color._laneColors[i].r, Color._laneColors[i].g, Color._laneColors[i].b, 255);
+                    SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._laneColors[i].r, Color._laneColors[i].g, Color._laneColors[i].b, 255);
                 }
                 else
                 {
                     // Key is not pressed - use darker color
-                    SDL_SetRenderDrawColor(_renderer, 80, 80, 80, 255);
+                    SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 80, 80, 80, 255);
                 }
 
-                SDL_RenderFillRect(_renderer, ref rect);
+                SDL_RenderFillRect((SDL_Renderer*)_renderer, & rect);
 
                 // Draw key border
-                SDL_SetRenderDrawColor(_renderer, 200, 200, 200, 255);
-                SDL_RenderDrawRect(_renderer, ref rect);
+                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 200, 200, 200, 255);
+                SDL_RenderRect((SDL_Renderer*)_renderer, & rect);
 
                 // Get key names from actual bindings instead of hardcoded values
                 string keyName = SDL_GetScancodeName(_keyBindings[i]);
@@ -139,10 +140,10 @@ namespace C4TX.SDL.Engine.Renderer
                     int size = (int)(effectSize * (1 - (elapsed / 300)));
                     byte alpha = (byte)(255 * (1 - (elapsed / 300)));
 
-                    SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
-                    SDL_SetRenderDrawColor(_renderer, Color._laneColors[lane].r, Color._laneColors[lane].g, Color._laneColors[lane].b, alpha);
+                    SDL_SetRenderDrawBlendMode((SDL_Renderer*)_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
+                    SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._laneColors[lane].r, Color._laneColors[lane].g, Color._laneColors[lane].b, alpha);
 
-                    SDL_Rect rect = new SDL_Rect
+                    SDL_FRect rect = new SDL_FRect
                     {
                         x = _lanePositions[lane] - (size / 2),
                         y = _hitPosition - (size / 2),
@@ -150,7 +151,7 @@ namespace C4TX.SDL.Engine.Renderer
                         h = size
                     };
 
-                    SDL_RenderFillRect(_renderer, ref rect);
+                    SDL_RenderFillRect((SDL_Renderer*)_renderer, & rect);
                 }
             }
 
@@ -170,7 +171,7 @@ namespace C4TX.SDL.Engine.Renderer
                 int popupY = 50;
 
                 // Draw with fade effect
-                SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
+                SDL_SetRenderDrawBlendMode((SDL_Renderer*)_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
                 RenderText(_lastHitFeedback, playFieldCenterX, popupY, fadeColor, true, true);
             }
 
@@ -193,8 +194,8 @@ namespace C4TX.SDL.Engine.Renderer
                 // Check if we have a skin texture for this note
                 IntPtr noteTexture = IntPtr.Zero;
                 bool useCustomSkin = false;
-                int textureWidth = 0;
-                int textureHeight = 0;
+                float textureWidth = 0;
+                float textureHeight = 0;
 
                 if (_skinService != null && _selectedSkin != "Default")
                 {
@@ -225,7 +226,7 @@ namespace C4TX.SDL.Engine.Renderer
                 }
 
                 // Create note rectangle
-                SDL_Rect noteRect = new SDL_Rect
+                SDL_FRect noteRect = new SDL_FRect
                 {
                     x = laneX - (noteWidth / 2),
                     y = (int)noteY - (noteHeight / 2),
@@ -236,21 +237,21 @@ namespace C4TX.SDL.Engine.Renderer
                 if (noteTexture != IntPtr.Zero)
                 {
                     // Draw textured note
-                    SDL_RenderCopy(_renderer, noteTexture, IntPtr.Zero, ref noteRect);
+                    SDL_RenderTexture((SDL_Renderer*)_renderer, (SDL_Texture*)noteTexture, null, & noteRect);
                 }
                 else
                 {
                     // Draw default note shape
-                    SDL_SetRenderDrawColor(_renderer, Color._laneColors[note.Column].r, Color._laneColors[note.Column].g, Color._laneColors[note.Column].b, 255);
+                    SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._laneColors[note.Column].r, Color._laneColors[note.Column].g, Color._laneColors[note.Column].b, 255);
 
                     // Draw different note shapes based on setting
                     switch (_noteShape)
                     {
                         case NoteShape.Rectangle:
                             // Default rectangle note
-                            SDL_RenderFillRect(_renderer, ref noteRect);
-                            SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 255);
-                            SDL_RenderDrawRect(_renderer, ref noteRect);
+                            SDL_RenderFillRect((SDL_Renderer*)_renderer, & noteRect);
+                            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 255, 255, 255, 255);
+                            SDL_RenderRect((SDL_Renderer*)_renderer, & noteRect);
                             break;
 
                         case NoteShape.Circle:
@@ -259,31 +260,31 @@ namespace C4TX.SDL.Engine.Renderer
                             int centerY = (int)noteY;
                             int radius = Math.Min(noteWidth, noteHeight) / 2;
 
-                            SDL_SetRenderDrawColor(_renderer, Color._laneColors[note.Column].r, Color._laneColors[note.Column].g, Color._laneColors[note.Column].b, 255);
+                            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._laneColors[note.Column].r, Color._laneColors[note.Column].g, Color._laneColors[note.Column].b, 255);
 
                             // Draw horizontal bar
-                            SDL_Rect hBar = new SDL_Rect
+                            SDL_FRect hBar = new SDL_FRect
                             {
                                 x = centerX - radius,
                                 y = centerY - (radius / 2),
                                 w = radius * 2,
                                 h = radius
                             };
-                            SDL_RenderFillRect(_renderer, ref hBar);
+                            SDL_RenderFillRect((SDL_Renderer*)_renderer, & hBar);
 
                             // Draw vertical bar
-                            SDL_Rect vBar = new SDL_Rect
+                            SDL_FRect vBar = new SDL_FRect
                             {
                                 x = centerX - (radius / 2),
                                 y = centerY - radius,
                                 w = radius,
                                 h = radius * 2
                             };
-                            SDL_RenderFillRect(_renderer, ref vBar);
+                            SDL_RenderFillRect((SDL_Renderer*)_renderer, & vBar);
 
                             // Draw white outline
-                            SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 255);
-                            SDL_RenderDrawRect(_renderer, ref noteRect);
+                            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 255, 255, 255, 255);
+                            SDL_RenderRect((SDL_Renderer*)_renderer, & noteRect);
                             break;
 
                         case NoteShape.Arrow:
@@ -293,18 +294,18 @@ namespace C4TX.SDL.Engine.Renderer
                             int arrowWidth = noteWidth;
                             int arrowHeight = noteHeight;
 
-                            SDL_SetRenderDrawColor(_renderer, Color._laneColors[note.Column].r, Color._laneColors[note.Column].g, Color._laneColors[note.Column].b, 255);
+                            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._laneColors[note.Column].r, Color._laneColors[note.Column].g, Color._laneColors[note.Column].b, 255);
 
                             // Define the arrow as a series of rectangles
                             // Main body (vertical rectangle)
-                            SDL_Rect body = new SDL_Rect
+                            SDL_FRect body = new SDL_FRect
                             {
                                 x = arrowCenterX - (arrowWidth / 4),
                                 y = arrowCenterY - (arrowHeight / 2),
                                 w = arrowWidth / 2,
                                 h = arrowHeight
                             };
-                            SDL_RenderFillRect(_renderer, ref body);
+                            SDL_RenderFillRect((SDL_Renderer*)_renderer, & body);
 
                             // Arrow head (triangle approximated by rectangles)
                             int headSize = arrowWidth;
@@ -317,48 +318,48 @@ namespace C4TX.SDL.Engine.Renderer
                             int headCenterY = arrowCenterY + (arrowHeight / 4);
 
                             // Top-left diagonal
-                            SDL_Rect diagTL = new SDL_Rect
+                            SDL_FRect diagTL = new SDL_FRect
                             {
                                 x = headCenterX - smallerRadius,
                                 y = headCenterY - smallerRadius,
                                 w = diagWidth,
                                 h = diagHeight
                             };
-                            SDL_RenderFillRect(_renderer, ref diagTL);
+                            SDL_RenderFillRect((SDL_Renderer*)_renderer, & diagTL);
 
                             // Top-right diagonal
-                            SDL_Rect diagTR = new SDL_Rect
+                            SDL_FRect diagTR = new SDL_FRect
                             {
                                 x = headCenterX + smallerRadius - diagWidth,
                                 y = headCenterY - smallerRadius,
                                 w = diagWidth,
                                 h = diagHeight
                             };
-                            SDL_RenderFillRect(_renderer, ref diagTR);
+                            SDL_RenderFillRect((SDL_Renderer*)_renderer, & diagTR);
 
                             // Bottom-left diagonal
-                            SDL_Rect diagBL = new SDL_Rect
+                            SDL_FRect diagBL = new SDL_FRect
                             {
                                 x = headCenterX - smallerRadius,
                                 y = headCenterY + smallerRadius - diagHeight,
                                 w = diagWidth,
                                 h = diagHeight
                             };
-                            SDL_RenderFillRect(_renderer, ref diagBL);
+                            SDL_RenderFillRect((SDL_Renderer*)_renderer, & diagBL);
 
                             // Bottom-right diagonal
-                            SDL_Rect diagBR = new SDL_Rect
+                            SDL_FRect diagBR = new SDL_FRect
                             {
                                 x = headCenterX + smallerRadius - diagWidth,
                                 y = headCenterY + smallerRadius - diagHeight,
                                 w = diagWidth,
                                 h = diagHeight
                             };
-                            SDL_RenderFillRect(_renderer, ref diagBR);
+                            SDL_RenderFillRect((SDL_Renderer*)_renderer, & diagBR);
 
                             // Draw simple outline using just a rectangle with white color
-                            SDL_SetRenderDrawColor(_renderer, 255, 255, 255, 255);
-                            SDL_RenderDrawRect(_renderer, ref noteRect);
+                            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 255, 255, 255, 255);
+                            SDL_RenderRect((SDL_Renderer*)_renderer, & noteRect);
                             break;
                     }
                 }
@@ -411,13 +412,13 @@ namespace C4TX.SDL.Engine.Renderer
                 RenderVolumeIndicator();
             }
         }
-        public static void RenderPauseOverlay()
+        public static unsafe void RenderPauseOverlay()
         {
             // Semi-transparent overlay
-            SDL_SetRenderDrawBlendMode(_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
-            SDL_SetRenderDrawColor(_renderer, 0, 0, 0, 180);
+            SDL_SetRenderDrawBlendMode((SDL_Renderer*)_renderer, SDL_BlendMode.SDL_BLENDMODE_BLEND);
+            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 0, 0, 0, 180);
 
-            SDL_Rect overlay = new SDL_Rect
+            SDL_FRect overlay = new SDL_FRect
             {
                 x = 0,
                 y = 0,
@@ -425,7 +426,7 @@ namespace C4TX.SDL.Engine.Renderer
                 h = _windowHeight
             };
 
-            SDL_RenderFillRect(_renderer, ref overlay);
+            SDL_RenderFillRect((SDL_Renderer*)_renderer, & overlay);
 
             // Pause text
             RenderText("PAUSED", _windowWidth / 2, _windowHeight / 2 - 60, Color._textColor, true, true);

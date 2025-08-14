@@ -1,5 +1,5 @@
 ﻿using C4TX.SDL.Models;
-using static SDL2.SDL;
+using SDL;
 using static C4TX.SDL.Engine.GameEngine;
 using C4TX.SDL.Engine.Renderer;
 
