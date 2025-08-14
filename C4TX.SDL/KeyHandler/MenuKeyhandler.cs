@@ -11,6 +11,7 @@ using static System.Formats.Asn1.AsnWriter;
 using C4TX.SDL.Models;
 using C4TX.SDL.Engine;
 using C4TX.SDL.Engine.Renderer;
+using System.ComponentModel.DataAnnotations;
 
 namespace C4TX.SDL.KeyHandler
 {
@@ -133,12 +134,13 @@ namespace C4TX.SDL.KeyHandler
                 return;
             }
 
+            // UNSUPPORTED DUE TO UI UPDATE NOT READY
             // F key to open search
-            if (scancode == SDL_Scancode.SDL_SCANCODE_F)
-            {
-                SearchKeyhandler.EnterSearchMode();
-                return;
-            }
+            //if (scancode == SDL_Scancode.SDL_SCANCODE_F)
+            //{
+            //    SearchKeyhandler.EnterSearchMode();
+            //    return;
+            //}
 
             // Get the keyboard state to check for modifier keys
             int numkeys = 0;
@@ -155,10 +157,17 @@ namespace C4TX.SDL.KeyHandler
             bool isCtrlPressed = keyboardState[(int)SDL_Scancode.SDL_SCANCODE_LCTRL] == 1 ||
                                 keyboardState[(int)SDL_Scancode.SDL_SCANCODE_RCTRL] == 1;
 
-            // CTRL+D to scan for new songs in the songs folder and update the database
-            if (isCtrlPressed && scancode == SDL_Scancode.SDL_SCANCODE_D)
+
+            if (scancode == SDL_Scancode.SDL_SCANCODE_F5)
             {
-                RefreshBeatmapDatabase();
+                var oldIndexSet = _selectedSetIndex;
+                var oldIndexDiff = _selectedDifficultyIndex;
+
+                BeatmapEngine.ScanForBeatmaps();
+                _selectedSetIndex = oldIndexSet;
+                _selectedDifficultyIndex = oldIndexDiff;
+                TriggerMapReload();
+
                 return;
             }
 
@@ -270,176 +279,59 @@ namespace C4TX.SDL.KeyHandler
 
                 if (scancode == SDL_Scancode.SDL_SCANCODE_UP)
                 {
-                    // Get all items from the RenderEngine to navigate
                     var listItems = Engine.Renderer.RenderEngine.GetSongListItems();
-
-                    if (listItems == null || listItems.Count == 0)
-                    {
-                        Console.WriteLine("Items were empty in key handler, forcing recalculation");
-                        Engine.Renderer.RenderEngine.ClearCachedSongListItems();
-                        // Force a render to recalculate positions
-                        Engine.Renderer.RenderEngine.Render();
-                        // Try again
-                        listItems = Engine.Renderer.RenderEngine.GetSongListItems();
-                    }
 
                     if (listItems != null && listItems.Count > 0 && _availableBeatmapSets != null && _selectedSetIndex >= 0 && _selectedSetIndex < _availableBeatmapSets.Count)
                     {
-                        // Instead of navigating across all beatmaps, only navigate within the current set
                         int currentSetIndex = _selectedSetIndex;
                         int currentDiffIndex = _selectedDifficultyIndex;
-
-                        // Move to previous difficulty in the current set
                         if (currentDiffIndex > 0)
                         {
-                            // Simply navigate to the previous difficulty in the same set
                             _selectedDifficultyIndex = currentDiffIndex - 1;
-
-                            // Load the selected beatmap
-                            string beatmapPath = _availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex].Path;
-                            BeatmapEngine.LoadBeatmap(beatmapPath);
-
-                            // Refresh beatmap data from database
-                            BeatmapEngine.RefreshSelectedBeatmapFromDatabase();
-
-                            // Clear cached scores when beatmap changes
-                            _cachedScoreMapHash = string.Empty;
-                            _cachedScores.Clear();
-                            _hasCheckedCurrentHash = false;
-
-                            // Preview the audio for this beatmap
-                            AudioEngine.PreviewBeatmapAudio(beatmapPath);
+                            TriggerMapReload();
                         }
-
-                        if (currentDiffIndex == 0 && _availableBeatmapSets != null && _availableBeatmapSets.Count > 1)
+                        else if (currentDiffIndex == 0 && _availableBeatmapSets != null && _availableBeatmapSets.Count > 1)
                         {
                             int newSetIndex = _selectedSetIndex;
 
-                            newSetIndex = newSetIndex > 0 ? newSetIndex - 1 : _availableBeatmapSets.Count - 1;
-
-                            // Only proceed if we're actually changing to a different set
+                            newSetIndex = newSetIndex > 0 ? newSetIndex - 1 : 0;
                             if (newSetIndex != _selectedSetIndex)
                             {
-                                // Update selected set
                                 _selectedSetIndex = newSetIndex;
-
-                                // Reset difficulty index to the first map in the set
-                                _selectedDifficultyIndex = _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count - 1;
-
-                                // Load the selected beatmap
-                                if (_selectedDifficultyIndex < _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
-                                {
-                                    string beatmapPath = _availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex].Path;
-                                    BeatmapEngine.LoadBeatmap(beatmapPath);
-
-                                    // Refresh beatmap data from database
-                                    BeatmapEngine.RefreshSelectedBeatmapFromDatabase();
-
-                                    // Clear cached scores
-                                    _cachedScoreMapHash = string.Empty;
-                                    _cachedScores.Clear();
-                                    _hasCheckedCurrentHash = false;
-
-                                    // Preview the audio
-                                    AudioEngine.PreviewBeatmapAudio(beatmapPath);
-                                }
-                            }
-                            int flatCounter = 0;
-
-                            foreach (var beatmapInfo in _availableBeatmapSets[_selectedSetIndex].Beatmaps)
-                            {
-                                RenderEngine._cachedSongListItems.Add((flatCounter, 1));
-                                flatCounter++;
+                                _selectedDifficultyIndex = 0;
+                                TriggerMapReload();
                             }
                         }
 
                         return;
                     }
-                
+
                 }
                 else if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
                 {
-                    // Get all items from the RenderEngine to navigate
                     var listItems = Engine.Renderer.RenderEngine.GetSongListItems();
-
-                    if (listItems == null || listItems.Count == 0)
-                    {
-                        Console.WriteLine("Items were empty in key handler, forcing recalculation");
-                        Engine.Renderer.RenderEngine.ClearCachedSongListItems();
-                        // Force a render to recalculate positions
-                        Engine.Renderer.RenderEngine.Render();
-                        // Try again
-                        listItems = Engine.Renderer.RenderEngine.GetSongListItems();
-                    }
 
                     if (listItems != null && listItems.Count > 0 && _availableBeatmapSets != null && _selectedSetIndex >= 0 && _selectedSetIndex < _availableBeatmapSets.Count)
                     {
-                        // Instead of navigating across all beatmaps, only navigate within the current set
                         int currentSetIndex = _selectedSetIndex;
                         int currentDiffIndex = _selectedDifficultyIndex;
                         int maxDiffIndex = _availableBeatmapSets[currentSetIndex].Beatmaps.Count - 1;
-
-                        // Move to next difficulty in the current set
                         if (currentDiffIndex < maxDiffIndex)
                         {
-                            // Simply navigate to the next difficulty in the same set
                             _selectedDifficultyIndex = currentDiffIndex + 1;
-
-                            // Load the selected beatmap
-                            string beatmapPath = _availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex].Path;
-                            BeatmapEngine.LoadBeatmap(beatmapPath);
-
-                            // Refresh beatmap data from database
-                            BeatmapEngine.RefreshSelectedBeatmapFromDatabase();
-
-                            // Clear cached scores when beatmap changes
-                            _cachedScoreMapHash = string.Empty;
-                            _cachedScores.Clear();
-                            _hasCheckedCurrentHash = false;
-
-                            // Preview the audio for this beatmap
-                            AudioEngine.PreviewBeatmapAudio(beatmapPath);
+                            TriggerMapReload();
                         }
-
-                        if (currentDiffIndex == _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count - 1 && _availableBeatmapSets != null && _availableBeatmapSets.Count > 1)
+                        else if (currentDiffIndex == _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count - 1 && _availableBeatmapSets != null && _availableBeatmapSets.Count > 1)
                         {
                             int newSetIndex = _selectedSetIndex;
 
                             newSetIndex = newSetIndex < _availableBeatmapSets.Count - 1 ? newSetIndex + 1 : 0;
-
-                            // Only proceed if we're actually changing to a different set
                             if (newSetIndex != _selectedSetIndex)
                             {
-                                // Update selected set
                                 _selectedSetIndex = newSetIndex;
-
-                                // Reset difficulty index to the first map in the set
                                 _selectedDifficultyIndex = 0;
-
-                                // Load the selected beatmap
-                                if (_selectedDifficultyIndex < _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
-                                {
-                                    string beatmapPath = _availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex].Path;
-                                    BeatmapEngine.LoadBeatmap(beatmapPath);
-
-                                    // Refresh beatmap data from database
-                                    BeatmapEngine.RefreshSelectedBeatmapFromDatabase();
-
-                                    // Clear cached scores
-                                    _cachedScoreMapHash = string.Empty;
-                                    _cachedScores.Clear();
-                                    _hasCheckedCurrentHash = false;
-
-                                    // Preview the audio
-                                    AudioEngine.PreviewBeatmapAudio(beatmapPath);
-                                }
-                            }
-                            int flatCounter = 0;
-
-                            foreach (var beatmapInfo in _availableBeatmapSets[_selectedSetIndex].Beatmaps)
-                            {
-                                RenderEngine._cachedSongListItems.Add((flatCounter, 1));
-                                flatCounter++;
+                                TriggerMapReload();
+                                    
                             }
                         }
 
@@ -448,80 +340,29 @@ namespace C4TX.SDL.KeyHandler
                 }
                 else if (scancode == SDL_Scancode.SDL_SCANCODE_RETURN)
                 {
-                    // Enter to immediately start the game with the selected map
-                    if (_availableBeatmapSets != null && _selectedSetIndex >= 0 &&
-                        _selectedSetIndex < _availableBeatmapSets.Count &&
-                        _selectedDifficultyIndex >= 0 &&
-                        _selectedDifficultyIndex < _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
-                    {
-                        if (!string.IsNullOrWhiteSpace(_username))
-                        {
-                            Start();
-                        }
-                        else
-                        {
-                            // If no username, switch to profile selection
-                            _availableProfiles = _profileService.GetAllProfiles();
-                            _currentState = GameState.ProfileSelect;
-                        }
-                    }
+                    TriggerEnterGame();
                 }
                 else if (scancode == SDL_Scancode.SDL_SCANCODE_LEFT || scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)
                 {
-                    // Navigate between different beatmap sets (not groups) using left/right keys
-                    if (_availableBeatmapSets != null && _availableBeatmapSets.Count > 1)
+                    if (_availableBeatmapSets != null && _availableBeatmapSets.Count > 0)
                     {
-                        int newSetIndex = _selectedSetIndex;
 
                         if (scancode == SDL_Scancode.SDL_SCANCODE_LEFT)
                         {
-                            // Move to previous set
-                            newSetIndex = newSetIndex > 0 ? newSetIndex - 1 : _availableBeatmapSets.Count - 1;
+                            _selectedSetIndex = _selectedSetIndex > 0 ? _selectedSetIndex - 1 : _availableBeatmapSets.Count - 1;
                         }
                         else // SDL_Scancode.SDL_SCANCODE_RIGHT
                         {
-                            // Move to next set
-                            newSetIndex = newSetIndex < _availableBeatmapSets.Count - 1 ? newSetIndex + 1 : 0;
+                            _selectedSetIndex = _selectedSetIndex < _availableBeatmapSets.Count - 1 ? _selectedSetIndex + 1 : 0;
                         }
-
-                        // Only proceed if we're actually changing to a different set
-                        if (newSetIndex != _selectedSetIndex)
-                        {
-                            // Update selected set
-                            _selectedSetIndex = newSetIndex;
-
-                            // Reset difficulty index to the first map in the set
-                            _selectedDifficultyIndex = 0;
-
-                            // Load the selected beatmap
-                            if (_selectedDifficultyIndex < _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
-                            {
-                                string beatmapPath = _availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex].Path;
-                                BeatmapEngine.LoadBeatmap(beatmapPath);
-
-                                // Refresh beatmap data from database
-                                BeatmapEngine.RefreshSelectedBeatmapFromDatabase();
-
-                                // Clear cached scores
-                                _cachedScoreMapHash = string.Empty;
-                                _cachedScores.Clear();
-                                _hasCheckedCurrentHash = false;
-
-                                // Preview the audio
-                                AudioEngine.PreviewBeatmapAudio(beatmapPath);
-                            }
-                        }
-                        int flatCounter = 0;
-
-                        foreach (var beatmapInfo in _availableBeatmapSets[_selectedSetIndex].Beatmaps)
-                        {
-                            RenderEngine._cachedSongListItems.Add((flatCounter, 1));
-                            flatCounter++;
-                        }
+                        _selectedDifficultyIndex = 0;
+                        TriggerMapReload();
                     }
                 }
             }
         }
+
+        
 
         // Method to refresh the beatmap database by scanning for new songs
         private static void RefreshBeatmapDatabase()
@@ -718,6 +559,9 @@ namespace C4TX.SDL.KeyHandler
                 Engine.Renderer.RenderEngine.RenderLoadingAnimation($"Error updating database: {ex.Message}", 1, 1);
                 SDL_Delay(2000); // Show error for 2 seconds
             }
+
+
+            AudioEngine.AdjustRate(0);
         }
     }
 }

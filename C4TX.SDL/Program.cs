@@ -4,6 +4,7 @@ using Clay_cs;
 using System.Runtime.InteropServices;
 using static C4TX.SDL.Engine.GameEngine;
 using SDL;
+using C4TX.SDL.LUI;
 
 namespace C4TX.SDL
 {
@@ -37,13 +38,13 @@ namespace C4TX.SDL
 
                 Clay.Initialize(arena, new Clay_Dimensions(RenderEngine._windowWidth, RenderEngine._windowHeight), ErrorHandler);
 
-                Clay.SetDebugModeEnabled(true);
+                Clay.SetDebugModeEnabled(false);
 
-                Clay.SetMeasureTextFunction(ClaySDL.ClaySDL3.MeasureText);
+                Clay.SetMeasureTextFunction(Wrapper.MeasureText);
 
-                ClaySDL.ClaySDL3.Fonts[0] = RenderEngine._font;
-                ClaySDL.ClaySDL3.Fonts[1] = RenderEngine._largeFont;
-                ClaySDL.ClaySDL3.Renderer = (SDL_Renderer*)RenderEngine._renderer;
+                Wrapper.Fonts[0] = RenderEngine._font;
+                Wrapper.Fonts[1] = RenderEngine._largeFont;
+                Wrapper.Renderer = (SDL_Renderer*)RenderEngine._renderer;
 
                 // Show initial loading screen
                 Engine.Renderer.RenderEngine.RenderLoadingAnimation("Initializing...");

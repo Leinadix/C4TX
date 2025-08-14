@@ -13,7 +13,7 @@ namespace C4TX.SDL.Engine.Renderer
             _menuAnimationTime += _gameTimer.ElapsedMilliseconds;
 
             // Draw animated background
-            DrawMenuBackground();
+            // DrawMenuBackground();
 
             // Draw header with settings title
             DrawHeader("Settings", "Customize Your Playfield");

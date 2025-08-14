@@ -97,14 +97,22 @@ namespace C4TX.SDL.Engine.Renderer
                 int width = 120;
                 int height = 40;
 
+                SDL_Color accent = Color._accentColor;
+                accent.a = (byte)(200 * (1.0 - Math.Min(1.0, (_currentTime - _rateChangeTime) / 2000.0)));
+                SDL_Color panel = Color._panelBgColor;
+                panel.a = (byte)(200 * (1.0 - Math.Min(1.0, (_currentTime - _rateChangeTime) / 2000.0)));
+                SDL_Color highlight = Color._highlightColor;
+                highlight.a = (byte)(200 * (1.0 - Math.Min(1.0, (_currentTime - _rateChangeTime) / 2000.0)));
+
+
                 // Draw background panel
-                DrawPanel(x, y, width, height, Color._panelBgColor, Color._accentColor);
+                DrawPanel(x, y, width, height, panel, accent);
 
                 // Format rate string with 1 decimal place
                 string rateText = $"Rate: {_currentRate:F1}x";
 
                 // Draw rate text
-                RenderText(rateText, x + width / 2, y + height / 2, Color._highlightColor, false, true);
+                RenderText(rateText, x + width / 2, y + height / 2, highlight, false, true);
             }
             else
             {

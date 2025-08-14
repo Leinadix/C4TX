@@ -10,7 +10,7 @@ namespace C4TX.SDL.Engine.Renderer
         public static unsafe void RenderProfileSelection()
         {
             // Draw background
-            DrawMenuBackground();
+            // DrawMenuBackground();
 
             // Draw header
             SDL_Color titleColor = new SDL_Color() { r = 255, g = 255, b = 255, a = 255 };

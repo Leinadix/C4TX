@@ -5,6 +5,11 @@ using static C4TX.SDL.Engine.GameEngine;
 using SDL;
 using static SDL.SDL3;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using C4TX.SDL.LUI;
+using C4TX.SDL.LUI.Core;
+using System.Drawing;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace C4TX.SDL.Engine.Renderer
 {
@@ -21,7 +26,9 @@ namespace C4TX.SDL.Engine.Renderer
         ];
         private static int _selectedDocumentIndex;
 
-        static Vector2 wheeltotal = new Vector2(0, 0);
+        static Vector2 deltaScroll = new Vector2(0, 0);
+
+        public static Clay_ElementId publicId;
 
         public static void RenderMenu()
         {
@@ -29,14 +36,15 @@ namespace C4TX.SDL.Engine.Renderer
             Clay.SetPointerState(mousePosition, mouseDown);
             Clay.UpdateScrollContainers(true, mouseScroll, (float)_deltaTime);
 
-            wheeltotal += mouseScroll * 1000f * (float)_deltaTime;
-
+            deltaScroll = mouseScroll * 1000f * (float)_deltaTime;
 
             var _contentBackgroundColor = new Clay_Color(30, 30, 40, 255);
 
+            publicId = Clay.Id("OuterContainer");
+
             using (Clay.Element(new()
             {
-                id = Clay.Id("OuterContainer"),
+                id = publicId,
                 backgroundColor = new Clay_Color(43, 41, 51),
                 layout = new()
                 {
@@ -63,6 +71,7 @@ namespace C4TX.SDL.Engine.Renderer
                     NDrawSongInfoPanel();
                 }
                 NDrawInstructionPanel();
+                NDrawProfilePanel();
             }
 
 
@@ -78,9 +87,10 @@ namespace C4TX.SDL.Engine.Renderer
 
         private static void NRenderMapItem(BeatmapInfo map, int index)
         {
+            var sid = Clay.Id($"MapItem#{map.GetHashCode()}");
             using (Clay.Element(new()
             {
-                id = Clay.Id($"MapItem#{map.GetHashCode()}"),
+                id = sid,
                 backgroundColor = index == _selectedDifficultyIndex ? new Clay_Color(53, 51, 61) : new Clay_Color(23, 21, 31),
                 layout = new()
                 {
@@ -91,20 +101,35 @@ namespace C4TX.SDL.Engine.Renderer
                 }
             }))
             {
+
                 Clay.OpenTextElement(map.Difficulty, new Clay_TextElementConfig
                 {
                     fontSize = 20,
-                    textColor = new Clay_Color(255, 255, 255),
+                    textColor = new Clay_Color(255, (Wrapper.IsHovered(sid, mousePosition) || _selectedDifficultyIndex == index ? 255.0f : 0.0f), 255),
                 });
+
+                if (Wrapper.IsHovered(sid, mousePosition) && mouseDown && !mouseDownLastframe)
+                {
+                    if (index == _selectedDifficultyIndex)
+                    {
+                        TriggerEnterGame();
+                    } else
+                    {
+                        _selectedDifficultyIndex = index;
+                        TriggerMapReload();
+                    }
+                }
             }
         }
 
         private static void NRenderSetItem(BeatmapSet set, int index)
         {
+            var sid = Clay.Id($"SetItem#{set.GetHashCode()}");
             using (Clay.Element(new()
             {
-                id = Clay.Id($"SetItem#{set.GetHashCode()}"),
-                backgroundColor =  index == 0 ? new Clay_Color(63, 61, 71) :  new Clay_Color(23, 21, 31),
+                id = sid,
+                backgroundColor =  index == _selectedSetIndex ? new Clay_Color(63, 61, 71) : 
+                    Wrapper.IsHovered(sid, mousePosition) ? new Clay_Color(43, 41, 51) : new Clay_Color(23, 21, 31),
                 layout = new()
                 {
                     layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
@@ -120,7 +145,18 @@ namespace C4TX.SDL.Engine.Renderer
                     textColor = new Clay_Color(255, 255, 255),
                 });
 
-                if (index != 0) return;
+                if (index != _selectedSetIndex)
+                {
+
+                    if (Wrapper.IsHovered(sid, mousePosition) && mouseDown)
+                    {
+                        _selectedSetIndex = index;
+                        _selectedDifficultyIndex = 0;
+                        TriggerMapReload();
+                    }
+
+                    return;
+                }
 
                 int bmc = _availableBeatmapSets![_selectedSetIndex].Beatmaps.Count;
 
@@ -131,16 +167,32 @@ namespace C4TX.SDL.Engine.Renderer
                 for (int i = startIndex; i < endIndex; i++)
                 {
                     var map = _availableBeatmapSets[_selectedSetIndex].Beatmaps[i];
+                    if (map == null) continue;
                     NRenderMapItem(map, i);
                 }
+
+                
             }
         }
-
-        private static void NDrawSongSelectionPanel()
+        class ScrollState
         {
+            public Vector2 scroll;
+            public bool hover;
+        }
+
+        static Vector2 scrollVelocity;
+
+        static Dictionary<Clay_ElementId, ScrollState> scrollStates = new ();
+        private static unsafe void NDrawSongSelectionPanel()
+        {
+            Clay_ElementId sId = Clay.Id("SondSelectionPanel");
+            if (!scrollStates.ContainsKey(sId))
+            {
+                scrollStates.Add(sId, new());
+            }
             using (Clay.Element(new()
             {
-                id = Clay.Id("SondSelectionPanel"),
+                id = sId,
                 backgroundColor = new Clay_Color(23, 21, 31),
                 layout = new()
                 {
@@ -153,58 +205,70 @@ namespace C4TX.SDL.Engine.Renderer
                 {
                     vertical = true,
                     horizontal = false,
-                    childOffset = wheeltotal
+                    childOffset = scrollStates[sId].scroll
                 }
             }))
             {
-                // Draw 5 top and 5 bottom of currently selected Set with wraparound
-
-                int startIndex = _selectedSetIndex - 5;
-                if (startIndex < 0)
+                if(Wrapper.IsHovered(sId, mousePosition))
                 {
-                    startIndex += _availableBeatmapSets.Count;
+                    scrollVelocity += deltaScroll;
+                    scrollStates[sId].scroll += scrollVelocity;
+                    scrollStates[sId].hover = true;
                 }
 
-                int endIndex = _selectedSetIndex + 5;
-                if (endIndex >= _availableBeatmapSets.Count)
+                if (scrollVelocity.LengthSquared() > 1)
                 {
-                    endIndex -= _availableBeatmapSets.Count;
+                    scrollVelocity *= (float)_deltaTime * 10f;
+                } else
+                {
+                    scrollVelocity = new Vector2(0, 0);
                 }
+
+                // Draw all.
+
+                int startIndex = 0;
 
                 int count = _availableBeatmapSets.Count;
 
-                for (int i = startIndex; i != endIndex; i = (i + 1) % count)
+                for (int i = startIndex; i < count; i++)
                 {
-                    // compute how many steps we've taken from startIndex, 0-based, across the wrap
-                    int offset = (i - startIndex + count) % count;
-
-                    // now offset goes  0,1,2,… even when i wraps from count-1 back to 0
-                    int relativeIndex = offset - 5;
-
                     var set = _availableBeatmapSets[i];
                     if (set == null) continue;
-                    NRenderSetItem(set, relativeIndex);
+                    NRenderSetItem(set, i);
                 }
             }
         }
 
         private unsafe static void NDrawSongInfoPanel()
         {
+            var sid = Clay.Id("SongInfoPanel");
+            var width = 0.0f;
+            var height = 0.0f;
             using (Clay.Element(new()
             {
-                id = Clay.Id("SongInfoPanel"),
+                id = sid,
                 backgroundColor = new Clay_Color(23, 21, 31),
                 layout = new()
                 {
                     layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
                     sizing = new Clay_Sizing(Clay_SizingAxis.Percent(0.5f), Clay_SizingAxis.Grow()),
-                    padding = Clay_Padding.All(16),
+                    padding = new Clay_Padding
+                    {
+                        left = 16,
+                        right = 16,
+                        top = 16,
+                        bottom = 16
+                    },
                     childGap = 16,
                 }
             }))
             {
+                width = Clay.GetElementData(sid).boundingBox.width;
+                height = Clay.GetElementData(sid).boundingBox.height * 0.5f;
 
                 IntPtr backgroundTexture = IntPtr.Zero;
+
+                #region loadingShenanigans
 
                 // First try from loaded beatmap background if available
                 if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.BackgroundFilename))
@@ -217,7 +281,7 @@ namespace C4TX.SDL.Engine.Renderer
                     if (_lastLoadedBackgroundKey != cacheKey || _currentMenuBackgroundTexture == IntPtr.Zero)
                     {
                         // Load the background image from the beatmap directory
-                        _currentMenuBackgroundTexture = LoadBackgroundTexture(beatmapDir, _currentBeatmap.BackgroundFilename);
+                        _currentMenuBackgroundTexture = LoadBackgroundTexture(beatmapDir, _currentBeatmap.BackgroundFilename, width, height);
                         _lastLoadedBackgroundKey = cacheKey;
                     }
 
@@ -231,7 +295,7 @@ namespace C4TX.SDL.Engine.Renderer
                     string bgDir = Path.GetDirectoryName(_availableBeatmapSets[_selectedSetIndex].BackgroundPath) ?? string.Empty;
                     string bgFilename = Path.GetFileName(_availableBeatmapSets[_selectedSetIndex].BackgroundPath);
 
-                    backgroundTexture = LoadBackgroundTexture(bgDir, bgFilename);
+                    backgroundTexture = LoadBackgroundTexture(bgDir, bgFilename, width, height);
                 }
 
                 // Additional fallback - search in the song directory
@@ -247,7 +311,8 @@ namespace C4TX.SDL.Engine.Renderer
                             if (imageFiles.Length > 0)
                             {
                                 string imageFile = Path.GetFileName(imageFiles[0]);
-                                backgroundTexture = LoadBackgroundTexture(_availableBeatmapSets[_selectedSetIndex].DirectoryPath, imageFile);
+
+                                backgroundTexture = LoadBackgroundTexture(_availableBeatmapSets[_selectedSetIndex].DirectoryPath, imageFile, width, height);
                                 if (backgroundTexture != IntPtr.Zero)
                                     break;
                             }
@@ -258,39 +323,505 @@ namespace C4TX.SDL.Engine.Renderer
                         Console.WriteLine($"Error searching for image files: {ex.Message}");
                     }
                 }
-                float imgWidth = 0, imgHeight = 0;
+                #endregion
 
-                SDL_GetTextureSize((SDL_Texture*)backgroundTexture,  &imgWidth,&imgHeight);
+                Wrapper.UserData data = new() { w = (int)width - 32, h = (int)height -32 };
+                IntPtr dataPtr = Marshal.AllocHGlobal(Marshal.SizeOf<LUI.Wrapper.UserData>());
+                Marshal.StructureToPtr(data, dataPtr, false);
+
 
                 using (Clay.Element(new()
                 {
                     id = Clay.Id("SongInfoPanelHeader"),
-                    backgroundColor = new Clay_Color(230, 21, 31),
+                    backgroundColor = new Clay_Color(0, 0, 0),
                     layout = new()
                     {
                         layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
-                        sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Percent(0.33f)),
+                        sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Percent(0.5f)),
                         padding = Clay_Padding.All(16),
                         childGap = 16,
                     },
+                    image = new Clay_ImageElementConfig()
+                    {
+                        imageData = (void*)backgroundTexture
+                    },
+                    userData = (void*)dataPtr,
+                    
+                }))
+                { }
+
+                using (Clay.Element(new()
+                {
+                    id = Clay.Id("Organizer"),
+                    layout = new()
+                    {
+                        layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                        sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                        childGap = 16
+                    }
                 }))
                 {
-                    
+                    var sicId = Clay.Id("SongInfoContent");
+                    using (Clay.Element(new()
+                    {
+                        id = sicId,
+                        backgroundColor = new Clay_Color(18, 16, 26),
+                        layout = new()
+                        {
+                            layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+                            sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            padding = Clay_Padding.All(16),
+                            childGap = 16,
+                        }
+                    }))
+                    {
+
+                        Wrapper.DrawClayText("Song info", 40, System.Drawing.Color.Yellow, 0, 0, 10, Clay_TextAlignment.CLAY_TEXT_ALIGN_RIGHT, Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NONE, sicId);
+
+                        var currentBeatmap = _availableBeatmapSets?[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex] ?? null;
+
+
+                        string creatorName = "";
+                        double bpmValue = 0;
+                        double lengthValue = 0;
+
+                        if (GameEngine._hasCachedDetails)
+                        {
+                            creatorName = GameEngine._cachedCreator;
+                            bpmValue = GameEngine._cachedBPM;
+                            lengthValue = GameEngine._cachedLength;
+                        }
+                        else
+                        {
+                            var dbDetails = GameEngine._beatmapService.DatabaseService.GetBeatmapDetails(currentBeatmap.Id, _availableBeatmapSets?[_selectedSetIndex].Id);
+                            creatorName = dbDetails.Creator;
+                            bpmValue = dbDetails.BPM;
+                            lengthValue = dbDetails.Length;
+
+                            // Cache these values for future renders
+                            GameEngine._cachedCreator = creatorName;
+                            GameEngine._cachedBPM = bpmValue;
+                            GameEngine._cachedLength = lengthValue;
+                            GameEngine._hasCachedDetails = true;
+                        }
+
+                        // Fall back to in-memory values if we couldn't get data from the database
+                        if (string.IsNullOrEmpty(creatorName))
+                            creatorName = _availableBeatmapSets?[_selectedSetIndex].Creator;
+                        if (bpmValue <= 0)
+                            bpmValue = currentBeatmap.BPM;
+                        if (lengthValue <= 0)
+                            lengthValue = currentBeatmap.Length;
+
+                        // Fall back to placeholders if all values are empty
+                        if (string.IsNullOrEmpty(creatorName))
+                            creatorName = "Unknown";
+                        if (bpmValue <= 0 && _currentBeatmap != null && _currentBeatmap.BPM > 0)
+                            bpmValue = _currentBeatmap.BPM;
+                        if (lengthValue <= 0 && _currentBeatmap != null && _currentBeatmap.Length > 0)
+                            lengthValue = _currentBeatmap.Length;
+
+
+                        string fullTitle = $"{currentBeatmap.Difficulty}";
+                        Wrapper.DrawClayText(
+                            fullTitle,
+                            10,
+                            System.Drawing.Color.White,
+                            0,
+                            0,
+                            10,
+                            Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER,
+                            Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NEWLINES,
+                            sicId);
+
+                        Wrapper.DrawClayText(
+                            _availableBeatmapSets?[_selectedSetIndex].Artist + " - " + _availableBeatmapSets?[_selectedSetIndex].Title,
+                            10,
+                            System.Drawing.Color.White,
+                            0,
+                            0,
+                            10,
+                            Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER,
+                            Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NEWLINES,
+                            sicId);
+
+                        var creatorText = "Mapped by " + (string.IsNullOrEmpty(creatorName) ? "Unknown" : creatorName);
+                        Wrapper.DrawClayText(
+                            creatorText,
+                            10,
+                            System.Drawing.Color.White,
+                            0,
+                            0,
+                            10,
+                            Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER,
+                            Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NEWLINES,
+                            sicId);
+
+                        string lengthText = lengthValue > 0 ? MillisToTime(lengthValue / GameEngine._currentRate).ToString() : "--:--";
+                        Wrapper.DrawClayText(
+                            lengthText,
+                            10,
+                            System.Drawing.Color.White,
+                            0,
+                            0,
+                            10,
+                            Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER,
+                            Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NEWLINES,
+                            sicId);
+
+                        string bpmText = bpmValue > 0 ? (bpmValue * GameEngine._currentRate).ToString("F2") + " BPM" : "--- BPM";
+                        Wrapper.DrawClayText(
+                            bpmText,
+                            10,
+                            System.Drawing.Color.White,
+                            0,
+                            0,
+                            10,
+                            Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER,
+                            Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NEWLINES,
+                            sicId); 
+
+                        double difficultyRating = 0;
+                        string diffText = "No difficulty rating";
+                        if (currentBeatmap.CachedDifficultyRating.HasValue)
+                        {
+                            // Check if we need to calculate with current rate
+                            if (Math.Abs(currentBeatmap.LastCachedRate - GameEngine._currentRate) > 0.01) // Small threshold for float comparison
+                            {
+                                // Recalculate for current rate if not already done
+                                if (_currentBeatmap != null)
+                                {
+                                    difficultyRating = GameEngine._difficultyRatingService.CalculateDifficulty(_currentBeatmap, GameEngine._currentRate);
+                                }
+                                else
+                                {
+                                    difficultyRating = currentBeatmap.CachedDifficultyRating.Value;
+                                }
+                            }
+                            else
+                            {
+                                // Use existing cached value
+                                difficultyRating = currentBeatmap.CachedDifficultyRating.Value;
+                            }
+
+                            // Display the difficulty rating with rate applied
+                            diffText = $"{difficultyRating:F2} *";
+                        }
+
+                        var ratingColor = GetRatingColor(difficultyRating);
+
+                        Wrapper.DrawClayText(
+                            diffText,
+                            10,
+                            ratingColor,
+                            0,
+                            0,
+                            10,
+                            Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER,
+                            Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NONE,
+                            sicId);
+
+                    }
+
+                    NDrawScoresPanel();
                 }
-                Clay.OpenTextElement("werarawr", new()
+            }
+        }
+
+        public static System.Drawing.Color Lerp(System.Drawing.Color a, System.Drawing.Color b, double t)
+        {
+            t = Math.Clamp(t, 0, 1);
+            int A = (int)Math.Round(a.A + (b.A - a.A) * t);
+            int R = (int)Math.Round(a.R + (b.R - a.R) * t);
+            int G = (int)Math.Round(a.G + (b.G - a.G) * t);
+            int B = (int)Math.Round(a.B + (b.B - a.B) * t);
+            return System.Drawing.Color.FromArgb(A, R, G, B);
+        }
+
+        public static System.Drawing.Color GetRatingColor(double rating)
+        {
+            rating = Math.Clamp(rating, 0, 10);
+
+            var stops = new[]
+            {
+            System.Drawing.Color.White,
+            System.Drawing.Color.FromArgb(255,  0,255,255),
+            System.Drawing.Color.FromArgb(255,  0,  0,255),
+            System.Drawing.Color.FromArgb(255,  0,255,  0),
+            System.Drawing.Color.FromArgb(255,255,255,  0),
+            System.Drawing.Color.FromArgb(255,255,127,  0),
+            System.Drawing.Color.FromArgb(255,255,  0,  0),
+            System.Drawing.Color.FromArgb(255, 75,  0,130),
+            System.Drawing.Color.FromArgb(255,148,  0,211),
+            System.Drawing.Color.FromArgb(255,255,  0,255),
+            System.Drawing.Color.Black,
+        };
+
+            int lo = (int)Math.Floor(rating);
+            if (lo >= 10) return stops[10];
+            double t = rating - lo;
+            return Lerp(stops[lo], stops[lo + 1], t);
+        }
+
+        private static void NDrawScoreSelectionItem(ScoreData score, bool isSelected, int index)
+        {
+            var sicId = Clay.Id($"ScoreItem#{index}");
+            using (Clay.Element(new()
+            {
+                id = sicId,
+                layout = new()
                 {
-                    textAlignment = Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER,
-                });
-                NDrawScoresPanel();
+                    layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                    sizing = new()
+                    {
+                        width = Clay_SizingAxis.Grow(),
+                        height = Clay_SizingAxis.Fixed(64)
+                    }
+                },
+                backgroundColor = new()
+                {
+                    a = 255,
+                    r = 0,
+                    g = 50,
+                    b = 50,
+                }
+            }))
+            {
+                var bgC = new Clay_Color()
+                {
+                    a = 50,
+                    r = 255,
+                    g = 255,
+                    b = 255,
+                };
+                if (isSelected)
+                {
+                    bgC.a = 255;
+                }
+
+                // Choose row color
+                System.Drawing.Color rowColor;
+                if (index == 0)
+                    rowColor = System.Drawing.Color.Gold;
+                else if (index == 1)
+                    rowColor = System.Drawing.Color.Silver;
+                else if (index == 2)
+                    rowColor = System.Drawing.Color.Brown;
+                else
+                    rowColor = System.Drawing.Color.White;
+
+                var sr = score.starRating;
+
+                // Format data
+                string date = score.DatePlayed.ToString("yyyy-MM-dd:HH:mm:ss");
+                string scoreText = (100 * sr * 4 * Math.Max(0, score.Accuracy - 0.8)).ToString("F4");
+                string accuracy = score.Accuracy.ToString("P2");
+                string combo = $"{score.MaxCombo}x";
+                string rate = $"{score.PlaybackRate}x";
+
+                // Draw row
+                using (Clay.Element(new()
+                {
+                    layout = new()
+                    {
+                        sizing = new()
+                        {
+                            width = Clay_SizingAxis.Grow(),
+                            height = Clay_SizingAxis.Grow()
+                        }
+                    },
+                    backgroundColor = bgC
+                }))
+                {
+                    //  Username                |   100.00%
+                    //                          |
+                    //                          |    combo
+                    //  1234-12-12-12-12-12     |   12345pp
+                    //
+
+                    using (Clay.Element(new()
+                    {
+                        layout = new()
+                        {
+                            layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                            sizing = new()
+                            {
+                                width = Clay_SizingAxis.Grow(),
+                                height = Clay_SizingAxis.Grow()
+                            }
+                        }
+                    }))
+                    {
+                        using (Clay.Element(new()
+                        {
+                            layout = new()
+                            {
+                                layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+                                sizing = new()
+                                {
+                                    width = Clay_SizingAxis.Percent(0.666666f),
+                                    height = Clay_SizingAxis.Grow()
+                                }
+                            },
+                        }))
+                        {
+                            using (Clay.Element(new()
+                            {
+                                layout = new()
+                                {
+                                    layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                    sizing = new()
+                                    {
+                                        width = Clay_SizingAxis.Grow(),
+                                        height = Clay_SizingAxis.Grow()
+                                    }
+                                }
+                            }))
+                            {
+                                Clay.OpenTextElement(score.Username, new()
+                                {
+                                    fontId = 0,
+                                    fontSize = 10,
+                                });
+                            }
+
+                            using (Clay.Element(new()
+                            {
+                                layout = new()
+                                {
+                                    layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                    sizing = new()
+                                    {
+                                        width = Clay_SizingAxis.Grow(),
+                                        height = Clay_SizingAxis.Grow()
+                                    }
+                                }
+                            }))
+                            {
+                                Clay.OpenTextElement(scoreText, new()
+                                {
+                                    fontId = 0,
+                                    fontSize = 10,
+                                });
+                            }
+                            using (Clay.Element(new()
+                            {
+                                layout = new()
+                                {
+                                    layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                    sizing = new()
+                                    {
+                                        width = Clay_SizingAxis.Grow(),
+                                        height = Clay_SizingAxis.Grow(16)
+                                    }
+                                }
+                            }))
+                            {
+                                Clay.OpenTextElement(date, new()
+                                {
+                                    fontId = 0,
+                                    fontSize = 10,
+                                });
+                            }
+                        }
+                        using (Clay.Element(new()
+                        {
+                            layout = new()
+                            {
+                                layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+                                sizing = new()
+                                {
+                                    width = Clay_SizingAxis.Grow(),
+                                    height = Clay_SizingAxis.Grow()
+                                }
+                            }
+                        }))
+                        {
+                            using (Clay.Element(new()
+                            {
+                                layout = new()
+                                {
+                                    layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+                                    sizing = new()
+                                    {
+                                        width = Clay_SizingAxis.Grow(),
+                                        height = Clay_SizingAxis.Grow()
+                                    }
+                                }
+                            }))
+                            {
+                                using (Clay.Element(new()
+                                {
+                                    layout = new()
+                                    {
+                                        sizing = new()
+                                        {
+                                            width = Clay_SizingAxis.Grow(),
+                                            height = Clay_SizingAxis.Grow()
+                                        }
+                                    }
+                                }))
+                                {
+                                    Clay.OpenTextElement(accuracy, new()
+                                    {
+                                        fontId = 0,
+                                        fontSize = 10,
+                                    });
+                                }
+                                    
+                                using (Clay.Element(new()
+                                {
+                                    layout = new()
+                                    {
+                                        sizing = new()
+                                        {
+                                            width = Clay_SizingAxis.Grow(),
+                                            height = Clay_SizingAxis.Grow()
+                                        }
+                                    }
+                                }))
+                                {
+                                    Clay.OpenTextElement(rate, new()
+                                    {
+                                        fontId = 0,
+                                        fontSize = 10,
+                                    });
+                                }
+                                    
+                            }
+                            using (Clay.Element(new()
+                            {
+                                layout = new()
+                                {
+                                    layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                    sizing = new()
+                                    {
+                                        width = Clay_SizingAxis.Grow(),
+                                        height = Clay_SizingAxis.Grow(16)
+                                    }
+                                }
+                            }))
+                            {
+                                Clay.OpenTextElement(combo, new()
+                                {
+                                    fontId = 0,
+                                    fontSize = 10,
+                                });
+                            }
+                        }
+                    }
+
+                }
             }
         }
 
         private static void NDrawScoresPanel()
         {
+            // TODO: Scrolling
+            var sicId = Clay.Id("ScoresPanel");
             using (Clay.Element(new()
             {
-                id = Clay.Id("ScorePanel"),
-                backgroundColor = new Clay_Color(230, 21, 31),
+                id = sicId,
                 layout = new()
                 {
                     layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
@@ -300,126 +831,400 @@ namespace C4TX.SDL.Engine.Renderer
                 },
             }))
             {
+                Wrapper.DrawClayText(
+                    "Previous Scores",
+                    40,
+                    System.Drawing.Color.White,
+                    0,
+                    0,
+                    10,
+                    Clay_TextAlignment.CLAY_TEXT_ALIGN_LEFT,
+                    Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NONE,
+                    sicId);
 
+                if (string.IsNullOrWhiteSpace(_username))
+                {
+                    Wrapper.DrawClayText(
+                    "Set username to view scores",
+                    40,
+                    System.Drawing.Color.Red,
+                    0,
+                    0,
+                    10,
+                    Clay_TextAlignment.CLAY_TEXT_ALIGN_LEFT,
+                    Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NONE,
+                    sicId);
+
+                    return;
+                }
+
+                if (_availableBeatmapSets == null || _selectedSetIndex >= _availableBeatmapSets.Count)
+                    return;
+
+                var currentMapset = _availableBeatmapSets[_selectedSetIndex];
+
+                if (_selectedDifficultyIndex >= currentMapset.Beatmaps.Count)
+                    return;
+
+                var currentBeatmap = currentMapset.Beatmaps[_selectedDifficultyIndex];
+
+                try
+                {
+                    string mapHash = string.Empty;
+
+                    if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.MapHash))
+                    {
+                        mapHash = _currentBeatmap.MapHash;
+                    }
+                    else
+                    {
+                        mapHash = _beatmapService.CalculateBeatmapHash(currentBeatmap.Path);
+                    }
+
+                    if (string.IsNullOrEmpty(mapHash))
+                    {
+                        Wrapper.DrawClayText(
+                            "Cannot load scores: Map hash unavailable",
+                            40,
+                            System.Drawing.Color.Red,
+                            0,
+                            0,
+                            10,
+                            Clay_TextAlignment.CLAY_TEXT_ALIGN_LEFT,
+                            Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NONE,
+                            sicId);
+                        return;
+                    }
+
+                    // Get scores for this beatmap using the hash
+                    if (mapHash != _cachedScoreMapHash || !_hasCheckedCurrentHash)
+                    {
+                        // Cache miss - fetch scores from service
+                        Console.WriteLine($"[DEBUG] Cache miss - fetching scores for map hash: {mapHash}");
+                        _cachedScores = _scoreService.GetBeatmapScoresByHash(_username, mapHash);
+                        _cachedScores = _cachedScores.OrderByDescending(s => _difficultyRatingService.CalculateDifficulty(GameEngine._currentBeatmap, s.PlaybackRate) * s.Accuracy).ToList();
+                        _cachedScoreMapHash = mapHash;
+                        _hasLoggedCacheHit = false;
+                        _hasCheckedCurrentHash = true;
+                    }
+                    else if (!_hasLoggedCacheHit)
+                    {
+                        Console.WriteLine($"[DEBUG] Using cached scores for map hash: {mapHash} (found {_cachedScores.Count})");
+                        _hasLoggedCacheHit = true;
+                    }
+
+                    var scores = _cachedScores.OrderByDescending(obj => obj.starRating * 4 * Math.Max(0, obj.Accuracy - 0.8)).ToList();
+
+
+                    if (scores.Count == 0)
+                    {
+                        Wrapper.DrawClayText(
+                            "No replays found!",
+                            40,
+                            System.Drawing.Color.Yellow,
+                            0,
+                            0,
+                            10,
+                            Clay_TextAlignment.CLAY_TEXT_ALIGN_LEFT,
+                            Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NONE,
+                            sicId);
+                        return;
+                    }
+
+                    for (int i = 0; i < _cachedScores.Count; i++)
+                    {
+                        var score = scores[i];
+                        // Determine if this row is selected in the scores section
+                        bool isScoreSelected = _isScoreSectionFocused && i == _selectedScoreIndex;
+
+                        NDrawScoreSelectionItem(score, isScoreSelected, i);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Wrapper.DrawClayText(
+                            $"Error: {ex.Message}",
+                            40,
+                            System.Drawing.Color.Yellow,
+                            0,
+                            0,
+                            10,
+                            Clay_TextAlignment.CLAY_TEXT_ALIGN_LEFT,
+                            Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NONE,
+                            sicId);
+                }
             }
         }
 
-        private static void NDrawInstructionPanel()
+        private static unsafe void NDrawInstructionPanel()
         {
             using (Clay.Element(new()
             {
-                id = Clay.Id("InstructionFooter"),
-                backgroundColor = new Clay_Color(23, 21, 31),
+                id = Clay.Id("InstructionSeperator"),
                 layout = new()
                 {
-                    layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
-                    sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Fixed(100)),
-                    padding = Clay_Padding.All(16),
-                    childGap = 16,
+                    layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+                    sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
                 }
             }))
             {
-                Clay.OpenTextElement("↑/↓: Navigate songs", new Clay_TextElementConfig
+                using (Clay.Element(new()
                 {
-                    fontSize = 16,
-                    textColor = new Clay_Color(255, 255, 255),
-                });
-                Clay.OpenTextElement("←/→: Select difficulty", new Clay_TextElementConfig
+                    id = Clay.Id("InstructionSeperatorTop"),
+                    layout = new()
+                    {
+                        layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+                        sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                    }
+                }))
                 {
-                    fontSize = 16,
-                    textColor = new Clay_Color(255, 255, 255),
-                });
-                Clay.OpenTextElement("Enter: Play selected song", new Clay_TextElementConfig
+                    using (Clay.Element(new()
+                    {
+                        id = Clay.Id("InstructionFooter"),
+                        backgroundColor = new Clay_Color(23, 21, 31),
+                        layout = new()
+                        {
+                            layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                            sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Fixed(100)),
+                            padding = Clay_Padding.All(16),
+                            childGap = 16,
+                        }
+                    }))
+                    {
+                        using (Clay.Element(new()
+                        {
+                            backgroundColor = new Clay_Color(23, 21, 31),
+                            layout = new()
+                            {
+                                layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            }
+                        }))
+                        {
+                            Clay.OpenTextElement("↑/↓: Change Set", new Clay_TextElementConfig
+                            {
+                                fontSize = 16,
+                                textColor = new Clay_Color(255, 255, 255),
+                                textAlignment = Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER
+                            });
+                        }
+                        using (Clay.Element(new()
+                        {
+                            backgroundColor = new Clay_Color(23, 21, 31),
+                            layout = new()
+                            {
+                                layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            }
+                        }))
+                        {
+                            Clay.OpenTextElement("←/→: Change difficulty", new Clay_TextElementConfig
+                            {
+                                fontSize = 16,
+                                textColor = new Clay_Color(255, 255, 255),
+                            });
+                        }
+
+                        using (Clay.Element(new()
+                        {
+                            backgroundColor = new Clay_Color(23, 21, 31),
+                            layout = new()
+                            {
+                                layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            }
+                        }))
+                        {
+                            Clay.OpenTextElement("Enter: Play", new Clay_TextElementConfig
+                            {
+                                fontSize = 16,
+                                textColor = new Clay_Color(255, 255, 255),
+                            });
+                        }
+                        using (Clay.Element(new()
+                        {
+                            backgroundColor = new Clay_Color(23, 21, 31),
+                            layout = new()
+                            {
+                                layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            }
+                        }))
+                        {
+                            Clay.OpenTextElement("Tab: Switch Menu", new Clay_TextElementConfig
+                            {
+                                fontSize = 16,
+                                textColor = new Clay_Color(255, 255, 255),
+                            });
+                        }
+
+                        using (Clay.Element(new()
+                        {
+                            backgroundColor = new Clay_Color(23, 21, 31),
+                            layout = new()
+                            {
+                                layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            }
+                        }))
+                        {
+                            Clay.OpenTextElement("P: Switch Profile", new Clay_TextElementConfig
+                            {
+                                fontSize = 16,
+                                textColor = new Clay_Color(255, 255, 255),
+                                textAlignment = Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER
+                            });
+                        }
+                        using (Clay.Element(new()
+                        {
+                            backgroundColor = new Clay_Color(23, 21, 31),
+                            layout = new()
+                            {
+                                layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            }
+                        }))
+                        {
+                            Clay.OpenTextElement("1/2: Change Rate", new Clay_TextElementConfig
+                            {
+                                fontSize = 16,
+                                textColor = new Clay_Color(255, 255, 255),
+                                textAlignment = Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER
+                            });
+                        }
+                        using (Clay.Element(new()
+                        {
+                            backgroundColor = new Clay_Color(23, 21, 31),
+                            layout = new()
+                            {
+                                layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            }
+                        }))
+                        {
+                            Clay.OpenTextElement("S: Settings", new Clay_TextElementConfig
+                            {
+                                fontSize = 16,
+                                textColor = new Clay_Color(255, 255, 255),
+                                textAlignment = Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER
+                            });
+                        }
+                        using (Clay.Element(new()
+                        {
+                            backgroundColor = new Clay_Color(23, 21, 31),
+                            layout = new()
+                            {
+                                layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            }
+                        }))
+                        {
+                            Clay.OpenTextElement("F5: Reload Maps", new Clay_TextElementConfig
+                            {
+                                fontSize = 16,
+                                textColor = new Clay_Color(255, 255, 255),
+                                textAlignment = Clay_TextAlignment.CLAY_TEXT_ALIGN_CENTER
+                            });
+                        }
+                        using (Clay.Element(new()
+                        {
+                            backgroundColor = new Clay_Color(23, 21, 31),
+                            layout = new()
+                            {
+                                layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                                sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            }
+                        }))
+                        {
+                            Clay.OpenTextElement($"U: Check for updates", new Clay_TextElementConfig
+                            {
+                                fontSize = 16,
+                                textColor = new Clay_Color(255, 255, 255),
+                            });
+                        }
+
+                    }
+                }
+                using (Clay.Element(new()
                 {
-                    fontSize = 16,
-                    textColor = new Clay_Color(255, 255, 255),
-                });
-                Clay.OpenTextElement($"v{GameEngine.Version} | U: Auto-Update", new Clay_TextElementConfig
+                    id = Clay.Id("InstructionSeperatorBot"),
+                    layout = new()
+                    {
+                        layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+                        sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                    }
+                }))
                 {
-                    fontSize = 16,
-                    textColor = new Clay_Color(255, 255, 255),
-                });
+
+                    string text = $"v{GameEngine.Version}";
+                    int size, width, height;
+                    var bytes = StringToUtf8(text, out size);
+
+                    SDL3_ttf.TTF_GetStringSize((TTF_Font*)_font, (byte*)&bytes, (nuint)size, &width, &height);
+
+                    using (Clay.Element(new()
+                    {
+                        layout = new()
+                        {
+                            layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+                            sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            padding = Clay_Padding.Hor((ushort)((ushort)(RenderEngine._windowWidth / 2) - width)),
+                        }
+                    }))
+                    {
+                        Clay.OpenTextElement(text, new()
+                        {
+                            fontId = 0,
+                            fontSize = 32
+                        });
+                    }
+                        
+                }
+
             }
+
+            
         }
 
-        public static void RenderMenuOld()
+        private static void NDrawProfilePanel()
         {
-            // Draw background
-            DrawMenuBackground();
-            
-            // Draw song selection panel
-            int songPanelWidth = _windowWidth * 3 / 4;
-            int songPanelHeight = _windowHeight - 220; // Reduced to give more space for controls panel
-            int songPanelX = (_windowWidth - songPanelWidth) / 2;
-            int songPanelY = 130;
-            
-            // Draw song selection panel
-            DrawPanel(songPanelX, songPanelY, songPanelWidth, songPanelHeight, Color._panelBgColor, Color._primaryColor);
-            
-            // Draw song selection content
-            if (_availableBeatmapSets != null && _availableBeatmapSets.Count > 0)
+            const int panelWidth = 300;
+            const int panelHeight = 300;
+            int panelX = _windowWidth - panelWidth - PANEL_PADDING;
+            int panelY = PANEL_PADDING;
+
+            DrawPanel(panelX, panelY, panelWidth, panelHeight, Color._panelBgColor, Color._accentColor);
+
+            // Draw header
+            SDL_Color titleColor = new SDL_Color() { r = 255, g = 255, b = 255, a = 255 };
+            SDL_Color subtitleColor = new SDL_Color() { r = 200, g = 200, b = 255, a = 255 };
+            RenderText("C4TX", panelX + panelWidth / 2, panelY + 50, titleColor, true, true);
+            RenderText("A 4k Rhythm Game", panelX + panelWidth / 2, panelY + 80, subtitleColor, false, true);
+
+            // Draw current profile
+            if (!string.IsNullOrWhiteSpace(_username))
             {
-                int contentY = songPanelY + 20;
-                int contentHeight = songPanelHeight - 60;
-                
-                // Draw song selection with new layout
-                DrawSongSelectionIntern(songPanelX + PANEL_PADDING, contentY,
-                    songPanelWidth - (2 * PANEL_PADDING), contentHeight);
+                // Show current profile
+                SDL_Color profileColor = new SDL_Color() { r = 150, g = 200, b = 255, a = 255 };
+                RenderText("Current Profile:", panelX + panelWidth / 2, panelY + 130, Color._textColor, false, true);
+                RenderText(_username, panelX + panelWidth / 2, panelY + 155, profileColor, false, true);
+                RenderText("Press P to switch profile", panelX + panelWidth / 2, panelY + 180, Color._mutedTextColor, false, true);
             }
             else
             {
-                // No songs found message
-                RenderText("No beatmaps found", _windowWidth / 2, songPanelY + 150, Color._errorColor, false, true);
-                RenderText("Place beatmaps in the Songs directory", _windowWidth / 2, songPanelY + 180, Color._mutedTextColor, false, true);
+                // Prompt to select a profile
+                SDL_Color warningColor = new SDL_Color() { r = 255, g = 150, b = 150, a = 255 };
+                RenderText("No profile selected", panelX + panelWidth / 2, panelY + 130, warningColor, false, true);
+                RenderText("Press P to select a profile", panelX + panelWidth / 2, panelY + 155, Color._textColor, false, true);
             }
-            
-            // Draw instruction panel at the bottom with increased height
-            DrawInstructionPanel(songPanelX, songPanelY + songPanelHeight + 10, songPanelWidth, 80);
 
-            // Draw the profile info panel in top right corner
-            DrawProfilePanel();
+            // Draw menu instructions
+            RenderText("Press S for Settings", panelX + panelWidth / 2, panelY + 210, Color._mutedTextColor, false, true);
+            RenderText("Press F11 for Fullscreen", panelX + panelWidth / 2, panelY + 235, Color._mutedTextColor, false, true);
         }
 
         #region old
 
-
-        public static unsafe void DrawMenuBackground()
-        {
-            // Calculate gradient based on animation time to slowly shift colors
-            double timeOffset = (_menuAnimationTime / 10000.0) % 1.0;
-            byte colorPulse = (byte)(155 + Math.Sin(timeOffset * Math.PI * 2) * 30);
-
-            // Top gradient color - dark blue
-            SDL_Color topColor = new SDL_Color() { r = 15, g = 15, b = 35, a = 255 };
-            // Bottom gradient color - slightly lighter with pulse
-            SDL_Color bottomColor = new SDL_Color() { r = 30, g = 30, b = colorPulse, a = 255 };
-
-            // Draw gradient by rendering a series of horizontal lines
-            int steps = 20;
-            int stepHeight = _windowHeight / steps;
-
-            for (int i = 0; i < steps; i++)
-            {
-                double ratio = (double)i / steps;
-
-                // Linear interpolation between colors
-                byte r = (byte)(topColor.r + (bottomColor.r - topColor.r) * ratio);
-                byte g = (byte)(topColor.g + (bottomColor.g - topColor.g) * ratio);
-                byte b = (byte)(topColor.b + (bottomColor.b - topColor.b) * ratio);
-
-                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, r, g, b, 255);
-
-                SDL_FRect rect = new SDL_FRect
-                {
-                    x = 0,
-                    y = i * stepHeight,
-                    w = _windowWidth,
-                    h = stepHeight + 1 // +1 to avoid any gaps
-                };
-
-                SDL_RenderFillRect((SDL_Renderer*)_renderer, & rect);
-            }
-        }
         public static unsafe void DrawHeader(string title, string subtitle)
         {
             // Draw game logo/title
@@ -438,723 +1243,6 @@ namespace C4TX.SDL.Engine.Renderer
                 h = 2
             };
             SDL_RenderFillRect((SDL_Renderer*)_renderer, & separatorLine);
-        }
-        public static unsafe void DrawSongSelectionIntern(int x, int y, int width, int height)
-        {
-            if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0)
-                return;
-
-            // Split the area into left panel (songs list) and right panel (details)
-            int leftPanelWidth = width / 2;
-            int rightPanelWidth = width - leftPanelWidth - PANEL_PADDING;
-            int rightPanelX = x + leftPanelWidth + PANEL_PADDING;
-
-            // Draw left panel - song list with difficulties
-            DrawSongListPanel(x, y, leftPanelWidth, height);
-
-            // Draw top right panel - song details
-            int detailsPanelHeight = height / 2 - PANEL_PADDING / 2;
-            DrawSongDetailsPanel(rightPanelX, y, rightPanelWidth, detailsPanelHeight);
-
-            // Draw bottom right panel - scores
-            int scoresPanelY = y + detailsPanelHeight + PANEL_PADDING;
-            int scoresPanelHeight = height - detailsPanelHeight - PANEL_PADDING;
-            DrawScoresPanel(rightPanelX, scoresPanelY, rightPanelWidth, scoresPanelHeight);
-        }
-        public static unsafe void DrawSongListPanel(int x, int y, int width, int height)
-        {
-            // If search mode is active, draw search panel instead
-            if (GameEngine._isSearching)
-            {
-                DrawSearchPanel(x, y, width, height);
-                return;
-            }
-            
-            // Title
-            RenderText("Song Selection", x + width / 2, y, Color._primaryColor, true, true);
-
-            // Draw panel for songs list
-            DrawPanel(x, y + 20, width, height - 20, new SDL_Color { r = 25, g = 25, b = 45, a = 255 }, Color._panelBgColor, 0);
-
-            if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0)
-                return;
-
-            // Constants for item heights and padding
-            int itemHeight = 50; // Height for each beatmap
-            int headerHeight = 40; // Height for set group headers
-
-            // Calculate the absolute boundaries of the visible area
-            int viewAreaTop = y + 25; // Top of the visible area
-            int viewAreaHeight = height - 40; // Height of the visible area
-            int viewAreaBottom = viewAreaTop + viewAreaHeight; // Bottom boundary
-
-            // ---------------------------
-            // PHASE 1: Measure all content and create flat list of all beatmaps with headers
-            // ---------------------------
-
-            // First, calculate total content height and positions for all items
-            int totalContentHeight = 0;
-            List<(int SetIndex, int DiffIndex, int StartY, int EndY, bool IsHeader)> itemPositions = new List<(int, int, int, int, bool)>();
-            
-            // Clear cached navigation items
-            _cachedSongListItems.Clear();
-
-            // Group the beatmaps by SetId
-            Dictionary<string, List<(int SetIndex, int DiffIndex)>> groupedBeatmaps = new Dictionary<string, List<(int SetIndex, int DiffIndex)>>();
-            
-            // First pass: collect all beatmaps by their SetId
-            for (int i = 0; i < _availableBeatmapSets.Count; i++)
-            {
-                var setId = _availableBeatmapSets[i].Id;
-                if (!groupedBeatmaps.ContainsKey(setId))
-                {
-                    groupedBeatmaps[setId] = new List<(int SetIndex, int DiffIndex)>();
-                }
-                
-                for (int j = 0; j < _availableBeatmapSets[i].Beatmaps.Count; j++)
-                {
-                    groupedBeatmaps[setId].Add((i, j));
-                }
-            }
-
-            // Create a flat list of all beatmaps with headers
-            int totalItems = 0;
-            int flatCounter = 0;
-            foreach (var groupEntry in groupedBeatmaps)
-            {
-                string setId = groupEntry.Key;
-                var beatmapsInGroup = groupEntry.Value;
-                
-                if (beatmapsInGroup.Count == 0)
-                    continue;
-                
-                // Get the set title for the header from the first beatmap in the group
-                var firstItem = beatmapsInGroup[0];
-                string setTitle = _availableBeatmapSets[firstItem.SetIndex].Title;
-                string setArtist = _availableBeatmapSets[firstItem.SetIndex].Artist;
-                
-                // Add header
-                int headerStartY = totalContentHeight;
-                int headerEndY = headerStartY + headerHeight;
-                itemPositions.Add((firstItem.SetIndex, -1, headerStartY, headerEndY, true)); // Use -1 for DiffIndex to indicate a header
-                
-                // Add header to navigation list (Type 0 = Header)
-                _cachedSongListItems.Add((flatCounter, 0));
-                
-                totalContentHeight += headerHeight;
-                totalItems++;
-                flatCounter++;
-                
-                // Add all beatmaps in this group
-                foreach (var beatmapInfo in beatmapsInGroup)
-                {
-                    // Calculate position for this beatmap
-                    int beatmapStartY = totalContentHeight;
-                    int beatmapEndY = beatmapStartY + itemHeight;
-                    
-                    // Add to positions list, false indicates it's not a header
-                    itemPositions.Add((beatmapInfo.SetIndex, beatmapInfo.DiffIndex, beatmapStartY, beatmapEndY, false));
-                    
-                    // Add to navigation list (Type 1 = Selectable beatmap)
-                    _cachedSongListItems.Add((flatCounter, 1));
-                    
-                    totalContentHeight += itemHeight;
-                    totalItems++;
-                    flatCounter++;
-                }
-            }
-
-            // ---------------------------
-            // PHASE 2: Calculate scroll position
-            // ---------------------------
-
-            // Find the currently selected beatmap
-            int selectedItemY = 0;
-            int selectedItemHeight = itemHeight;
-            int flatSelectedIndex = -1;
-
-            if (_selectedSetIndex >= 0 && _selectedSetIndex < _availableBeatmapSets.Count &&
-                _selectedDifficultyIndex >= 0 && _selectedDifficultyIndex < _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
-            {
-                // Find the item position for the selected beatmap
-                for (int i = 0; i < itemPositions.Count; i++)
-                {
-                    var item = itemPositions[i];
-                    if (!item.IsHeader && item.SetIndex == _selectedSetIndex && item.DiffIndex == _selectedDifficultyIndex)
-                    {
-                        flatSelectedIndex = i;
-                        selectedItemY = item.StartY;
-                        break;
-                    }
-                }
-            }
-
-            // Calculate max possible scroll
-            int maxScroll = Math.Max(0, totalContentHeight - viewAreaHeight);
-
-            // Center the selected item in the view
-            int targetScrollPos = selectedItemY + (selectedItemHeight / 2) - (viewAreaHeight / 2);
-            targetScrollPos = Math.Max(0, Math.Min(maxScroll, targetScrollPos));
-
-            // Final scroll offset
-            int scrollOffset = targetScrollPos;
-
-            // ---------------------------
-            // PHASE 3: Render items
-            // ---------------------------
-
-            // Draw each item (header or beatmap)
-            for (int i = 0; i < itemPositions.Count; i++)
-            {
-                var item = itemPositions[i];
-                
-                // Calculate the actual screen Y position after applying scroll
-                int screenY = viewAreaTop + item.StartY - scrollOffset;
-                
-                // Skip items completely outside the view area (with some buffer)
-                if ((item.IsHeader && screenY + headerHeight < viewAreaTop - 50) || 
-                    (!item.IsHeader && screenY + itemHeight < viewAreaTop - 50) || 
-                    screenY > viewAreaBottom + 50)
-                {
-                    continue;
-                }
-                
-                if (item.IsHeader)
-                {
-                    // Draw header
-                    var setInfo = _availableBeatmapSets[item.SetIndex];
-                    string headerText = $"{setInfo.Artist} - {setInfo.Title}";
-                    
-                    // Draw header background
-                    SDL_Color headerBgColor = new SDL_Color { r = 40, g = 40, b = 70, a = 255 };
-                    SDL_Color headerTextColor = new SDL_Color { r = 220, g = 220, b = 255, a = 255 };
-                    
-                    // Calculate proper panel height for better alignment
-                    int actualHeaderHeight = headerHeight - 5;
-                    DrawPanel(x + 5, screenY, width - 10, actualHeaderHeight, headerBgColor, headerBgColor, 0);
-                    
-                    // Truncate header text if too long
-                    if (headerText.Length > 40) headerText = headerText.Substring(0, 38) + "...";
-                    
-                    // Render the header text
-                    RenderText(headerText, x + 20, screenY + actualHeaderHeight / 2, headerTextColor, false, false, true);
-                }
-                else
-                {
-                    // Draw beatmap
-                    // Check if this is the selected beatmap
-                    bool isSelected = (item.SetIndex == _selectedSetIndex && item.DiffIndex == _selectedDifficultyIndex);
-                    
-                    // Get the current beatmap and its set
-                    var beatmapSet = _availableBeatmapSets[item.SetIndex];
-                    var beatmap = beatmapSet.Beatmaps[item.DiffIndex];
-                    
-                    // Draw beatmap background
-                    SDL_Color bgColor = isSelected ? Color._primaryColor : Color._panelBgColor;
-                    SDL_Color textColor = isSelected ? Color._textColor : Color._mutedTextColor;
-                    
-                    // Calculate proper panel height for better alignment
-                    int actualItemHeight = itemHeight - 5;
-                    DrawPanel(x + 20, screenY, width - 25, actualItemHeight, bgColor, isSelected ? Color._accentColor : Color._panelBgColor, isSelected ? 2 : 0);
-                    
-                    // Create display text showing just the difficulty (since we already show artist/title in header)
-                    string beatmapTitle = $"{beatmap.Difficulty}";
-                    if (beatmapTitle.Length > 30) beatmapTitle = beatmapTitle.Substring(0, 28) + "...";
-                    
-                    // Render beatmap text
-                    RenderText(beatmapTitle, x + 35, screenY + actualItemHeight / 2, textColor, false, false);
-                    
-                    // Show star rating if available
-                    if (beatmap.CachedDifficultyRating.HasValue && beatmap.CachedDifficultyRating.Value > 0)
-                    {
-                        string difficultyText = $"{beatmap.CachedDifficultyRating.Value:F2}★";
-                        RenderText(difficultyText, x + width - 50, screenY + actualItemHeight / 2, textColor, false, true);
-                    }
-                }
-            }
-        }
-        public static unsafe void DrawSongDetailsPanel(int x, int y, int width, int height)
-        {
-            // Draw panel
-            DrawPanel(x, y, width, height, new SDL_Color { r = 25, g = 25, b = 45, a = 255 }, Color._primaryColor);
-
-            // If no beatmaps or selection is invalid, display message
-            if (_availableBeatmapSets == null || _availableBeatmapSets.Count == 0 || _selectedSetIndex < 0 || 
-                (GameEngine._isSearching == false && _selectedSetIndex >= _availableBeatmapSets.Count))
-            {
-                RenderText("No beatmap selected", x + width / 2, y + height / 2, Color._mutedTextColor, false, true);
-                return;
-            }
-
-            // If in search mode and we have a loaded beatmap, display its details directly
-            if (GameEngine._isSearching && GameEngine._showSearchResults && GameEngine._currentBeatmap != null)
-            {
-                DisplayCurrentBeatmapDetails(x, y, width, height);
-                return;
-            }
-
-            var selectedSet = _availableBeatmapSets[_selectedSetIndex];
-            
-            // Validate the difficulty index
-            if (_selectedDifficultyIndex < 0 || _selectedDifficultyIndex >= selectedSet.Beatmaps.Count)
-            {
-                RenderText("Invalid beatmap selection", x + width / 2, y + height / 2, Color._mutedTextColor, false, true);
-                return;
-            }
-
-            // Draw background image if available
-            IntPtr backgroundTexture = IntPtr.Zero;
-            
-            // First try from loaded beatmap background if available
-            if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.BackgroundFilename))
-            {
-                var beatmapInfo = selectedSet.Beatmaps[_selectedDifficultyIndex];
-                string beatmapDir = Path.GetDirectoryName(beatmapInfo.Path) ?? string.Empty;
-                
-                // If we haven't loaded this background yet, or it's a different one
-                string cacheKey = $"{beatmapDir}_{_currentBeatmap.BackgroundFilename}";
-                if (_lastLoadedBackgroundKey != cacheKey || _currentMenuBackgroundTexture == IntPtr.Zero)
-                {
-                    // Load the background image from the beatmap directory
-                    _currentMenuBackgroundTexture = LoadBackgroundTexture(beatmapDir, _currentBeatmap.BackgroundFilename);
-                    _lastLoadedBackgroundKey = cacheKey;
-                }
-                
-                backgroundTexture = _currentMenuBackgroundTexture;
-            }
-            
-            // Fallback to using set background if needed
-            if (backgroundTexture == IntPtr.Zero && !string.IsNullOrEmpty(selectedSet.BackgroundPath)) 
-            {
-                // Try to load directly from BackgroundPath
-                string bgDir = Path.GetDirectoryName(selectedSet.BackgroundPath) ?? string.Empty;
-                string bgFilename = Path.GetFileName(selectedSet.BackgroundPath);
-                
-                backgroundTexture = LoadBackgroundTexture(bgDir, bgFilename);
-            }
-            
-            // Additional fallback - search in the song directory
-            if (backgroundTexture == IntPtr.Zero && !string.IsNullOrEmpty(selectedSet.DirectoryPath))
-            {
-                // Try to find any image file in the song directory
-                try
-                {
-                    string[] imageExtensions = { "*.jpg", "*.jpeg", "*.png", "*.bmp" };
-                    foreach (var ext in imageExtensions)
-                    {
-                        var imageFiles = Directory.GetFiles(selectedSet.DirectoryPath, ext);
-                        if (imageFiles.Length > 0)
-                        {
-                            string imageFile = Path.GetFileName(imageFiles[0]);
-                            backgroundTexture = LoadBackgroundTexture(selectedSet.DirectoryPath, imageFile);
-                            if (backgroundTexture != IntPtr.Zero)
-                                break;
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error searching for image files: {ex.Message}");
-                }
-            }
-
-            // Draw the background if it was loaded successfully
-            if (backgroundTexture != IntPtr.Zero)
-            {
-                DrawBackgroundImage(backgroundTexture, x, y, width, height);
-            }
-
-            var currentBeatmap = selectedSet.Beatmaps[_selectedDifficultyIndex];
-            
-            // Use cached values from GameEngine instead of querying the database on every frame
-            string creatorName = "";
-            double bpmValue = 0;
-            double lengthValue = 0;
-            
-            if (GameEngine._hasCachedDetails)
-            {
-                // Use the cached values
-                creatorName = GameEngine._cachedCreator;
-                bpmValue = GameEngine._cachedBPM;
-                lengthValue = GameEngine._cachedLength;
-            }
-            else
-            {
-                // As a fallback, get values directly (should only happen once)
-                var dbDetails = GameEngine._beatmapService.DatabaseService.GetBeatmapDetails(currentBeatmap.Id, selectedSet.Id);
-                creatorName = dbDetails.Creator;
-                bpmValue = dbDetails.BPM;
-                lengthValue = dbDetails.Length;
-                
-                // Cache these values for future renders
-                GameEngine._cachedCreator = creatorName;
-                GameEngine._cachedBPM = bpmValue;
-                GameEngine._cachedLength = lengthValue;
-                GameEngine._hasCachedDetails = true;
-            }
-            
-            // Fall back to in-memory values if we couldn't get data from the database
-            if (string.IsNullOrEmpty(creatorName))
-                creatorName = selectedSet.Creator;
-            if (bpmValue <= 0)
-                bpmValue = currentBeatmap.BPM;
-            if (lengthValue <= 0)
-                lengthValue = currentBeatmap.Length;
-            
-            // Fall back to placeholders if all values are empty
-            if (string.IsNullOrEmpty(creatorName))
-                creatorName = "Unknown";
-            if (bpmValue <= 0 && _currentBeatmap != null && _currentBeatmap.BPM > 0)
-                bpmValue = _currentBeatmap.BPM;
-            if (lengthValue <= 0 && _currentBeatmap != null && _currentBeatmap.Length > 0)
-                lengthValue = _currentBeatmap.Length;
-
-            // Draw beatmap title and difficulty
-            int titleY = y + 30;
-            string fullTitle = $"{currentBeatmap.Difficulty}";
-            RenderText(fullTitle, x + width / 2, titleY, Color._highlightColor, false, true, true);
-
-            // Draw artist - title
-            int artistY = titleY + 30;
-            RenderText(selectedSet.Artist + " - " + selectedSet.Title, x + width / 2, artistY, Color._textColor, false, true, true);
-            
-            // Draw mapper information
-            int creatorY = artistY + 30;
-            string creatorText = "Mapped by " + (string.IsNullOrEmpty(creatorName) ? "Unknown" : creatorName);
-            RenderText(creatorText, x + width / 2, creatorY, Color._textColor, false, true, true);
-            
-            // Draw length with rate applied
-            int lengthY = creatorY + 30;
-            string lengthText = lengthValue > 0 ? MillisToTime(lengthValue / GameEngine._currentRate).ToString() : "--:--";
-            RenderText(lengthText, x + width / 2, lengthY, Color._textColor, false, true, true);
-            
-            // Draw BPM with rate applied
-            int rateY = lengthY + 30;
-            string bpmText = bpmValue > 0 ? (bpmValue * GameEngine._currentRate).ToString("F2") + " BPM" : "--- BPM";
-            RenderText(bpmText, x + width / 2, rateY, Color._textColor, false, true, true);
-            
-            // Draw difficulty rating
-            int diffY = rateY + 30;
-            double difficultyRating = 0;
-            
-            if (currentBeatmap.CachedDifficultyRating.HasValue)
-            {
-                // Check if we need to calculate with current rate
-                if (Math.Abs(currentBeatmap.LastCachedRate - GameEngine._currentRate) > 0.01) // Small threshold for float comparison
-                {
-                    // Recalculate for current rate if not already done
-                    if (_currentBeatmap != null)
-                    {
-                        difficultyRating = GameEngine._difficultyRatingService.CalculateDifficulty(_currentBeatmap, GameEngine._currentRate);
-                    }
-                    else
-                    {
-                        difficultyRating = currentBeatmap.CachedDifficultyRating.Value;
-                    }
-                }
-                else
-                {
-                    // Use existing cached value
-                    difficultyRating = currentBeatmap.CachedDifficultyRating.Value;
-                }
-                
-                // Display the difficulty rating with rate applied
-                string diffText = $"{difficultyRating:F2}★";
-                RenderText(diffText, x + width / 2, diffY, Color._textColor, false, true, true);
-            }
-            else
-            {
-                RenderText("No difficulty rating", x + width / 2, diffY, Color._mutedTextColor, false, true, true);
-            }
-        }
-        private static unsafe void DisplayCurrentBeatmapDetails(int x, int y, int width, int height)
-        {
-            // Draw background image if available
-            IntPtr searchBackgroundTexture = IntPtr.Zero;
-            
-            // Get the background from the currently loaded beatmap
-            if (GameEngine._currentBeatmap != null && !string.IsNullOrEmpty(GameEngine._currentBeatmap.BackgroundFilename))
-            {
-                string beatmapDir = Path.GetDirectoryName(AudioEngine._currentAudioPath) ?? string.Empty;
-                
-                if (!string.IsNullOrEmpty(beatmapDir))
-                {
-                    // If we haven't loaded this background yet, or it's a different one
-                    string cacheKey = $"{beatmapDir}_{GameEngine._currentBeatmap.BackgroundFilename}";
-                    if (_lastLoadedBackgroundKey != cacheKey || _currentMenuBackgroundTexture == IntPtr.Zero)
-                    {
-                        // Load the background image from the beatmap directory
-                        _currentMenuBackgroundTexture = LoadBackgroundTexture(beatmapDir, GameEngine._currentBeatmap.BackgroundFilename);
-                        _lastLoadedBackgroundKey = cacheKey;
-                    }
-                    
-                    searchBackgroundTexture = _currentMenuBackgroundTexture;
-                }
-            }
-            
-            // Draw the background if it was loaded successfully
-            if (searchBackgroundTexture != IntPtr.Zero)
-            {
-                DrawBackgroundImage(searchBackgroundTexture, x, y, width, height);
-            }
-            
-            // Draw beatmap title and difficulty
-            int searchTitleY = y + 30;
-            string searchFullTitle = $"{GameEngine._currentBeatmap.Version}";
-            RenderText(searchFullTitle, x + width / 2, searchTitleY, Color._highlightColor, false, true, true);
-
-            // Draw artist - title
-            int searchArtistY = searchTitleY + 30;
-            RenderText(GameEngine._currentBeatmap.Artist + " - " + GameEngine._currentBeatmap.Title, x + width / 2, searchArtistY, Color._textColor, false, true, true);
-            
-            // Draw mapper information
-            int searchCreatorY = searchArtistY + 30;
-            string searchCreatorText = "Mapped by " + (string.IsNullOrEmpty(GameEngine._currentBeatmap.Creator) ? "Unknown" : GameEngine._currentBeatmap.Creator);
-            RenderText(searchCreatorText, x + width / 2, searchCreatorY, Color._textColor, false, true, true);
-            
-            // Draw length with rate applied
-            int searchLengthY = searchCreatorY + 30;
-            string searchLengthText = GameEngine._currentBeatmap.Length > 0 ? 
-                MillisToTime(GameEngine._currentBeatmap.Length / GameEngine._currentRate).ToString() : "--:--";
-            RenderText(searchLengthText, x + width / 2, searchLengthY, Color._textColor, false, true, true);
-            
-            // Draw BPM with rate applied
-            int searchRateY = searchLengthY + 30;
-            string searchBpmText = GameEngine._currentBeatmap.BPM > 0 ? 
-                (GameEngine._currentBeatmap.BPM * GameEngine._currentRate).ToString("F2") + " BPM" : "--- BPM";
-            RenderText(searchBpmText, x + width / 2, searchRateY, Color._textColor, false, true, true);
-            
-            // Draw difficulty information
-            if (GameEngine._difficultyRatingService != null && GameEngine._currentBeatmap != null)
-            {
-                int searchDiffY = searchRateY + 30;
-                double currentRating = GameEngine._difficultyRatingService.CalculateDifficulty(GameEngine._currentBeatmap, GameEngine._currentRate);
-                string searchDiffText = $"{currentRating:F2}★ ({GameEngine._currentRate:F2}x)";
-                RenderText(searchDiffText, x + width / 2, searchDiffY, Color._highlightColor, false, true);
-            }
-        }
-        private static unsafe void DrawBackgroundImage(IntPtr backgroundTexture, int x, int y, int width, int height)
-        {
-            // Get texture dimensions
-
-            float imgWidth, imgHeight;
-
-            SDL_GetTextureSize((SDL_Texture*)backgroundTexture, &imgWidth, &imgHeight);
-            
-            // Calculate aspect ratio to maintain proportions
-            float imgAspect = (float)imgWidth / imgHeight;
-            float panelAspect = (float)width / height;
-            
-            SDL_FRect destRect;
-            if (imgAspect > panelAspect)
-            {
-                // Image is wider than panel
-                int scaledHeight = (int)(width / imgAspect);
-                destRect = new SDL_FRect
-                {
-                    x = x,
-                    y = y + (height - scaledHeight) / 2,
-                    w = width,
-                    h = scaledHeight
-                };
-            }
-            else
-            {
-                // Image is taller than panel
-                int scaledWidth = (int)(height * imgAspect);
-                destRect = new SDL_FRect
-                {
-                    x = x + (width - scaledWidth) / 2,
-                    y = y,
-                    w = scaledWidth,
-                    h = height
-                };
-            }
-            
-            // Draw the background image
-            SDL_RenderTexture((SDL_Renderer*)_renderer, (SDL_Texture*)backgroundTexture, null, & destRect);
-            
-            // Add a semi-transparent dark overlay for better text readability
-            SDL_FRect overlayRect = new SDL_FRect
-            {
-                x = x,
-                y = y,
-                w = width,
-                h = height
-            };
-            
-            SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, 0, 0, 0, 180);
-            SDL_RenderFillRect((SDL_Renderer*)_renderer, & overlayRect);
-        }
-        public static unsafe void DrawScoresPanel(int x, int y, int width, int height)
-        {
-            DrawPanel(x, y, width, height, new SDL_Color { r = 25, g = 25, b = 45, a = 255 }, Color._primaryColor);
-
-            // Title
-            RenderText("Previous Scores", x + width / 2, y + PANEL_PADDING, Color._highlightColor, true, true);
-
-            if (string.IsNullOrWhiteSpace(_username))
-            {
-                RenderText("Set username to view scores", x + width / 2, y + height / 2, Color._mutedTextColor, false, true);
-                return;
-            }
-
-            if (_availableBeatmapSets == null || _selectedSetIndex >= _availableBeatmapSets.Count)
-                return;
-
-            var currentMapset = _availableBeatmapSets[_selectedSetIndex];
-
-            if (_selectedDifficultyIndex >= currentMapset.Beatmaps.Count)
-                return;
-
-            var currentBeatmap = currentMapset.Beatmaps[_selectedDifficultyIndex];
-
-            try
-            {
-                // Get the map hash for the selected beatmap
-                string mapHash = string.Empty;
-
-                if (_currentBeatmap != null && !string.IsNullOrEmpty(_currentBeatmap.MapHash))
-                {
-                    mapHash = _currentBeatmap.MapHash;
-                }
-                else
-                {
-                    // Calculate hash if needed
-                    mapHash = _beatmapService.CalculateBeatmapHash(currentBeatmap.Path);
-                }
-
-                if (string.IsNullOrEmpty(mapHash))
-                {
-                    RenderText("Cannot load scores: Map hash unavailable", x + width / 2, y + height / 2, Color._mutedTextColor, false, true);
-                    return;
-                }
-
-                // Get scores for this beatmap using the hash
-                if (mapHash != _cachedScoreMapHash || !_hasCheckedCurrentHash)
-                {
-                    // Cache miss - fetch scores from service
-                    Console.WriteLine($"[DEBUG] Cache miss - fetching scores for map hash: {mapHash}");
-                    _cachedScores = _scoreService.GetBeatmapScoresByHash(_username, mapHash);
-                    _cachedScores = _cachedScores.OrderByDescending(s => _difficultyRatingService.CalculateDifficulty(GameEngine._currentBeatmap, s.PlaybackRate) * s.Accuracy).ToList();
-                    _cachedScoreMapHash = mapHash;
-                    _hasLoggedCacheHit = false; // Reset for new hash
-                    _hasCheckedCurrentHash = true; // Mark that we've checked this hash
-                }
-                else if (!_hasLoggedCacheHit)
-                {
-                    Console.WriteLine($"[DEBUG] Using cached scores for map hash: {mapHash} (found {_cachedScores.Count})");
-                    _hasLoggedCacheHit = true; // Only log once per hash
-                }
-
-                // Get a copy of the cached scores (to sort without modifying the cache)
-                var scores = _cachedScores.ToList();
-
-                if (scores.Count == 0)
-                {
-                    RenderText("No previous plays", x + width / 2, y + height / 2, Color._mutedTextColor, false, true);
-                    return;
-                }
-
-                // Header row
-                int headerY = y + PANEL_PADDING + 30;
-                int columnSpacing = (width / 5);
-
-                RenderText("Date", x + PANEL_PADDING, headerY, Color._primaryColor, false, false);
-                RenderText("Score", 50 + x + PANEL_PADDING + columnSpacing, headerY, Color._primaryColor, false, false);
-                RenderText("Accuracy", x + PANEL_PADDING + columnSpacing * 2, headerY, Color._primaryColor, false, false);
-                RenderText("Combo", x + PANEL_PADDING + columnSpacing * 3, headerY, Color._primaryColor, false, false);
-                RenderText("Rate", x + PANEL_PADDING + columnSpacing * 4, headerY, Color._primaryColor, false, false);
-
-                // Draw scores table
-                int scoreY = headerY + 25;
-                int rowHeight = 25;
-                int maxScores = Math.Min(scores.Count, (height - 100) / rowHeight);
-
-                // Draw table separator
-                SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._mutedTextColor.r, Color._mutedTextColor.g, Color._mutedTextColor.b, 100);
-                SDL_FRect separator = new SDL_FRect { x = x + PANEL_PADDING, y = headerY + 15, w = width - PANEL_PADDING * 2, h = 1 };
-                SDL_RenderFillRect((SDL_Renderer*)_renderer, & separator);
-
-                for (int i = 0; i < maxScores; i++)
-                {
-                    var score = scores[i];
-
-                    // Determine if this row is selected in the scores section
-                    bool isScoreSelected = _isScoreSectionFocused && i == _selectedScoreIndex;
-
-                    // Draw row background if selected
-                    if (isScoreSelected)
-                    {
-                        SDL_SetRenderDrawColor((SDL_Renderer*)_renderer, Color._primaryColor.r, Color._primaryColor.g, Color._primaryColor.b, 100);
-                        SDL_FRect rowBg = new SDL_FRect
-                        {
-                            x = x + PANEL_PADDING - 5,
-                            y = scoreY - 5,
-                            w = width - (PANEL_PADDING * 2) + 10,
-                            h = rowHeight + 4
-                        };
-                        SDL_RenderFillRect((SDL_Renderer*)_renderer, & rowBg);
-                    }
-
-                    // Choose row color
-                    SDL_Color rowColor;
-                    if (i == 0)
-                        rowColor = Color._highlightColor; // Gold for best
-                    else if (i == 1)
-                        rowColor = new SDL_Color() { r = 192, g = 192, b = 192, a = 255 }; // Silver for second best
-                    else if (i == 2)
-                        rowColor = new SDL_Color() { r = 205, g = 127, b = 50, a = 255 }; // Bronze for third
-                    else
-                        rowColor = Color._textColor;
-
-                    var sr = -1; // _difficultyRatingService.CalculateDifficulty(_currentBeatmap, score.PlaybackRate);
-
-                    // Format data
-                    string date = score.DatePlayed.ToString("yyyy-MM-dd:HH:mm:ss");
-                    string scoreText = (sr * score.Accuracy).ToString("F4");
-                    string accuracy = score.Accuracy.ToString("P2");
-                    string combo = $"{score.MaxCombo}x";
-
-                    // Draw row
-                    RenderText(date, x + PANEL_PADDING, scoreY, rowColor, false, false);
-                    RenderText(scoreText, 50 + x + PANEL_PADDING + columnSpacing, scoreY, rowColor, false, false);
-                    RenderText(accuracy, x + PANEL_PADDING + columnSpacing * 2, scoreY, rowColor, false, false);
-                    RenderText(combo, x + PANEL_PADDING + columnSpacing * 3, scoreY, rowColor, false, false);
-                    RenderText(score.PlaybackRate.ToString("F1"), x + PANEL_PADDING + columnSpacing * 4, scoreY, rowColor, false, false);
-                    scoreY += rowHeight;
-                }
-            }
-            catch (Exception ex)
-            {
-                RenderText($"Error: {ex.Message}", x + width / 2, y + height / 2, Color._errorColor, false, true);
-            }
-        }
-        public static unsafe void DrawInstructionPanel(int x, int y, int width, int height)
-        {
-            // Draw panel
-            DrawPanel(x, y, width, height, new SDL_Color { r = 25, g = 25, b = 35, a = 255 }, Color._primaryColor);
-            
-            // Draw instruction text in a grid
-            int padding = 20;
-            int columnWidth = (width - (3 * padding)) / 2;
-            
-            // Left column
-            int leftX = x + padding;
-            int rightX = x + width - padding - columnWidth;
-            int firstRowY = y + 25;
-            int secondRowY = y + 50;
-            
-            // Key instructions
-            RenderText("↑/↓: Navigate songs", leftX, firstRowY, Color._mutedTextColor, false, false);
-            RenderText("←/→: Select difficulty", leftX, secondRowY, Color._mutedTextColor, false, false);
-            
-            // More instructions on right
-            RenderText("Enter: Play selected song", rightX, firstRowY, Color._mutedTextColor, false, false);
-            
-            // Include version and update check instruction
-            string versionInfo = $"v{GameEngine.Version} | U: Auto-Update";
-            RenderText(versionInfo, rightX, secondRowY, Color._mutedTextColor, false, false);
         }
         public static unsafe void DrawSearchPanel(int x, int y, int width, int height)
         {
@@ -1342,42 +1430,6 @@ namespace C4TX.SDL.Engine.Renderer
                     RenderText("No matching beatmaps found", x + width / 2, resultsY + 40, Color._errorColor, false, true);
                 }
             }
-        }
-        public static unsafe void DrawProfilePanel()
-        {
-            const int panelWidth = 300;
-            const int panelHeight = 300;
-            int panelX = _windowWidth - panelWidth - PANEL_PADDING;
-            int panelY = PANEL_PADDING;
-
-            DrawPanel(panelX, panelY, panelWidth, panelHeight, Color._panelBgColor, Color._accentColor);
-
-            // Draw header
-            SDL_Color titleColor = new SDL_Color() { r = 255, g = 255, b = 255, a = 255 };
-            SDL_Color subtitleColor = new SDL_Color() { r = 200, g = 200, b = 255, a = 255 };
-            RenderText("C4TX", panelX + panelWidth / 2, panelY + 50, titleColor, true, true);
-            RenderText("A 4k Rhythm Game", panelX + panelWidth / 2, panelY + 80, subtitleColor, false, true);
-
-            // Draw current profile
-            if (!string.IsNullOrWhiteSpace(_username))
-            {
-                // Show current profile
-                SDL_Color profileColor = new SDL_Color() { r = 150, g = 200, b = 255, a = 255 };
-                RenderText("Current Profile:", panelX + panelWidth / 2, panelY + 130, Color._textColor, false, true);
-                RenderText(_username, panelX + panelWidth / 2, panelY + 155, profileColor, false, true);
-                RenderText("Press P to switch profile", panelX + panelWidth / 2, panelY + 180, Color._mutedTextColor, false, true);
-            }
-            else
-            {
-                // Prompt to select a profile
-                SDL_Color warningColor = new SDL_Color() { r = 255, g = 150, b = 150, a = 255 };
-                RenderText("No profile selected", panelX + panelWidth / 2, panelY + 130, warningColor, false, true);
-                RenderText("Press P to select a profile", panelX + panelWidth / 2, panelY + 155, Color._textColor, false, true);
-            }
-
-            // Draw menu instructions
-            RenderText("Press S for Settings", panelX + panelWidth / 2, panelY + 210, Color._mutedTextColor, false, true);
-            RenderText("Press F11 for Fullscreen", panelX + panelWidth / 2, panelY + 235, Color._mutedTextColor, false, true);
         }
 
         #endregion

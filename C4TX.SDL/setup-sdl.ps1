@@ -5,7 +5,7 @@ $sdl2Version = "2.26.5"
 $sdl2TtfVersion = "2.20.2"
 $sdl2ImageVersion = "2.6.3" # Latest stable SDL_image version
 $bassVersion = "2.4.17" # BASS version
-$outputDir = "bin\Debug\net6.0"
+$outputDir = "bin\Debug\net9.0"
 $tempDir = "temp-sdl"
 
 # Create directories if they don't exist

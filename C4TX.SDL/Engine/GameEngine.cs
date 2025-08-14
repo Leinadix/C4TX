@@ -477,9 +477,61 @@ namespace C4TX.SDL.Engine
             }
         }
 
+        public static void TriggerMapReload()
+        {
+            _cachedScoreMapHash = string.Empty;
+            _cachedScores.Clear();
+            _hasCheckedCurrentHash = false;
+
+            string beatmapPath = _availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex].Path;
+            BeatmapEngine.LoadBeatmap(beatmapPath);
+
+            // Refresh beatmap data from database
+            BeatmapEngine.RefreshSelectedBeatmapFromDatabase();
+            RenderEngine.ClearCachedSongListItems();
+
+            // Clear cached scores
+            _cachedScoreMapHash = string.Empty;
+            _cachedScores.Clear();
+            _hasCheckedCurrentHash = false;
+
+            // Preview the audio
+            AudioEngine.PreviewBeatmapAudio(beatmapPath);
+
+            int flatCounter = 0;
+
+            foreach (var beatmapInfo in _availableBeatmapSets[_selectedSetIndex].Beatmaps)
+            {
+                RenderEngine._cachedSongListItems.Add((flatCounter, 1));
+                flatCounter++;
+            }
+        }
+
         public static Vector2 mousePosition;
         public static Vector2 mouseScroll;
         public static bool mouseDown;
+        public static bool mouseDownLastframe;
+
+        public static void TriggerEnterGame()
+        {
+            // Enter to immediately start the game with the selected map
+            if (_availableBeatmapSets != null && _selectedSetIndex >= 0 &&
+                _selectedSetIndex < _availableBeatmapSets.Count &&
+                _selectedDifficultyIndex >= 0 &&
+                _selectedDifficultyIndex < _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count)
+            {
+                if (!string.IsNullOrWhiteSpace(_username))
+                {
+                    Start();
+                }
+                else
+                {
+                    // If no username, switch to profile selection
+                    _availableProfiles = _profileService.GetAllProfiles();
+                    _currentState = GameState.ProfileSelect;
+                }
+            }
+        }
 
         // The main game loop
         public static void Run()
@@ -531,81 +583,79 @@ namespace C4TX.SDL.Engine
             double lastFrameTime = _gameTimer.ElapsedMilliseconds;
 
             while (Renderer.RenderEngine._isRunning)
-            unsafe {
-                // Update timing
-                _currentTime = _gameTimer.ElapsedMilliseconds;
-                _deltaTime = (_currentTime - lastFrameTime) / 1000.0;
-                SDL_Event e;
+                unsafe {
+                    // Update timing
+                    _currentTime = _gameTimer.ElapsedMilliseconds;
+                    _deltaTime = (_currentTime - lastFrameTime) / 1000.0;
+                    SDL_Event e;
 
-                mouseScroll = new Vector2(0, 0);
+                    mouseScroll = new Vector2(0, 0);
 
                     // Process events
                     while (SDL_PollEvent(&e))
-                {
-                    if (e.type == (uint)SDL_EventType.SDL_EVENT_QUIT)
                     {
-                        Renderer.RenderEngine._isRunning = false;
-                    }
-                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN)
-                    {
-                        HandleKeyDown(e.key.scancode);
-                    }
-                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_KEY_UP)
-                    {
-                        HandleKeyUp(e.key.scancode);
-                    }
-                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_TEXT_INPUT)
-                    {
-                        // Using Marshal to convert the text input to a string safely
-                        // This handles keyboard layout awareness properly
-                        string text = SDL_GetEventText(e);
-
-                        // Process the text input based on the current game state
-                        if (_currentState == GameState.ProfileSelect)
+                        if (e.type == (uint)SDL_EventType.SDL_EVENT_QUIT)
                         {
-                            ProfileKeyhandler.ProcessTextInput(text);
+                            Renderer.RenderEngine._isRunning = false;
                         }
-                        else if (_currentState == GameState.Menu && _isSearching)
+                        else if (e.type == (uint)SDL_EventType.SDL_EVENT_KEY_DOWN)
                         {
-                            SearchKeyhandler.ProcessTextInput(text);
+                            HandleKeyDown(e.key.scancode);
                         }
-                        // Add more states if they need text input
-                    }
-                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_TEXT_EDITING)
-                    {
-                        // IME composition text handling can be added here if needed
-                    }
-                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_MOTION)
-                    {
-                        mousePosition = new Vector2(e.motion.x, e.motion.y);
-                    } else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_WHEEL)
-                    {
-                        mouseScroll = new Vector2(e.wheel.x, e.wheel.y);
-                        Console.WriteLine($"Wheel at ({e.wheel.x}, {e.wheel.y})");
-                    }
-                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_DOWN)
-                    {
-                        mouseDown = true;
-                        Console.WriteLine($"Mouse down at ({e.button.x}, {e.button.y})");
-                    }
-                    else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_UP)
-                    {
-                        mouseDown = false;
-                        Console.WriteLine($"Mouse up at ({e.button.x}, {e.button.y})");
+                        else if (e.type == (uint)SDL_EventType.SDL_EVENT_KEY_UP)
+                        {
+                            HandleKeyUp(e.key.scancode);
+                        }
+                        else if (e.type == (uint)SDL_EventType.SDL_EVENT_TEXT_INPUT)
+                        {
+                            // Using Marshal to convert the text input to a string safely
+                            // This handles keyboard layout awareness properly
+                            string text = SDL_GetEventText(e);
+
+                            // Process the text input based on the current game state
+                            if (_currentState == GameState.ProfileSelect)
+                            {
+                                ProfileKeyhandler.ProcessTextInput(text);
+                            }
+                            else if (_currentState == GameState.Menu && _isSearching)
+                            {
+                                SearchKeyhandler.ProcessTextInput(text);
+                            }
+                            // Add more states if they need text input
+                        }
+                        else if (e.type == (uint)SDL_EventType.SDL_EVENT_TEXT_EDITING)
+                        {
+                            // IME composition text handling can be added here if needed
+                        }
+                        else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_MOTION)
+                        {
+                            mousePosition = new Vector2(e.motion.x, e.motion.y);
+                        } else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_WHEEL)
+                        {
+                            mouseScroll = new Vector2(e.wheel.x, e.wheel.y);
+                        }
+                        else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_DOWN)
+                        {
+                            mouseDown = true;
+                        }
+                        else if (e.type == (uint)SDL_EventType.SDL_EVENT_MOUSE_BUTTON_UP)
+                        {
+                            mouseDown = false;
+                        }
+
                     }
 
+                    // Update game state
+                    Update();
+
+                    Renderer.RenderEngine.Render();
+
+                    // Small delay to not hog CPU
+                    SDL_Delay(1);
+                    mouseDownLastframe = mouseDown;
+
+                    lastFrameTime = _currentTime;
                 }
-
-                // Update game state
-                Update();
-
-                Renderer.RenderEngine.Render();
-
-                // Small delay to not hog CPU
-                SDL_Delay(1);
-
-                lastFrameTime = _currentTime;
-            }
         }
 
         // Method to get rate-adjusted start time
@@ -961,12 +1011,6 @@ namespace C4TX.SDL.Engine
                             _keyStates[i] = 0;
                         }
                     }
-
-                    // Hide volume indicator after 2 seconds
-                    if (_showVolumeIndicator && _currentTime - _volumeChangeTime > 2000)
-                    {
-                        _showVolumeIndicator = false;
-                    }
                 }
             }
             else if (_currentState == GameState.Menu)
@@ -993,12 +1037,6 @@ namespace C4TX.SDL.Engine
                     {
                         _isMenuTransitioning = false;
                     }
-                }
-
-                // Hide volume indicator after 2 seconds
-                if (_showVolumeIndicator && _gameTimer.ElapsedMilliseconds - _volumeChangeTime > 2000)
-                {
-                    _showVolumeIndicator = false;
                 }
             }
             else if (_currentState == GameState.Results)

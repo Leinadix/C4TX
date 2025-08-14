@@ -19,7 +19,7 @@ namespace C4TX.SDL.Engine.Renderer
         public static unsafe void RenderResults()
         {
             // Draw background
-            DrawMenuBackground();
+            // DrawMenuBackground();
 
             // Create a main panel for results
             int panelWidth = (int)(_windowWidth * 0.95);

@@ -18,7 +18,7 @@ namespace C4TX.SDL.Engine.Renderer
 {
     public unsafe partial class RenderEngine
     {
-        public static IntPtr LoadBackgroundTexture(string beatmapDir, string backgroundFilename)
+        public static IntPtr LoadBackgroundTexture(string beatmapDir, string backgroundFilename, float width, float height)
         {
             // Early exit if filename is empty
             if (string.IsNullOrEmpty(backgroundFilename))
@@ -101,6 +101,14 @@ namespace C4TX.SDL.Engine.Renderer
                     Console.WriteLine($"Failed to load background image: {SDL_GetError()}");
                     return IntPtr.Zero;
                 }
+
+                SDL_Rect rect = new()
+                {
+                    w = (int)width,
+                    h = (int)height
+                };
+
+                SDL_SetSurfaceClipRect(surface, &rect);
 
                 // Create texture from surface
                 var texture = SDL_CreateTextureFromSurface((SDL_Renderer*)(SDL_Renderer*)_renderer, surface);

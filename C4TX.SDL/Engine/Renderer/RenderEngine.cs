@@ -1,4 +1,5 @@
 ﻿using C4TX.SDL.KeyHandler;
+using C4TX.SDL.LUI;
 using C4TX.SDL.Models;
 using C4TX.SDL.Services;
 using Clay_cs;
@@ -52,6 +53,14 @@ namespace C4TX.SDL.Engine.Renderer
                     break;
             }
 
+            if (_currentState != GameState.Playing)
+            {
+
+                var commands = Clay.EndLayout();
+
+                Wrapper.RenderCommands(commands);
+            }
+
             // Always render volume indicator if needed
             if (_showVolumeIndicator)
             {
@@ -78,13 +87,7 @@ namespace C4TX.SDL.Engine.Renderer
                 DrawFpsCounter();
             }
 
-            if (_currentState != GameState.Playing)
-            {
-
-                var commands = Clay.EndLayout();
-
-                ClaySDL.ClaySDL3.RenderCommands(commands);
-            }
+            
 
             // Present the rendered frame
             SDL_RenderPresent((SDL_Renderer*)_renderer);
