@@ -18,11 +18,58 @@ namespace C4TX.SDL.Engine.Renderer
 {
     public unsafe partial class RenderEngine
     {
+        public static IntPtr CreateBlackTexture(int width, int height)
+        {
+            try
+            {
+                // Create a black surface
+                var surface = SDL_CreateSurface(width, height, SDL_PixelFormat.SDL_PIXELFORMAT_RGBA8888);
+                if (surface == null)
+                {
+                    Console.WriteLine($"Failed to create black surface: {SDL_GetError()}");
+                    return IntPtr.Zero;
+                }
+
+                // Fill the surface with black color (0, 0, 0, 255)
+                SDL_FillSurfaceRect(surface, null, SDL_MapSurfaceRGBA(surface, 0, 0, 0, 255));
+
+                // Create texture from surface
+                var texture = SDL_CreateTextureFromSurface((SDL_Renderer*)_renderer, surface);
+                
+                // Clean up the surface
+                SDL_DestroySurface(surface);
+                
+                if (texture == null)
+                {
+                    Console.WriteLine($"Failed to create texture from black surface: {SDL_GetError()}");
+                    return IntPtr.Zero;
+                }
+
+                Console.WriteLine($"Created black fallback texture ({width}x{height})");
+                return (IntPtr)texture;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error creating black texture: {ex.Message}");
+                return IntPtr.Zero;
+            }
+        }
+
         public static IntPtr LoadBackgroundTexture(string beatmapDir, string backgroundFilename, float width, float height)
         {
-            // Early exit if filename is empty
-            if (string.IsNullOrEmpty(backgroundFilename))
-                return IntPtr.Zero;
+            // Don't use performance monitoring here since this might be called from background threads
+            
+            // Create black texture if filename is invalid
+            if (string.IsNullOrEmpty(backgroundFilename) || 
+                backgroundFilename == ".png" || 
+                backgroundFilename == ".jpg" || 
+                backgroundFilename == ".jpeg" || 
+                backgroundFilename == ".bmp" ||
+                backgroundFilename.Length < 5) // Too short to be valid
+            {
+                Console.WriteLine($"Invalid background filename '{backgroundFilename}', creating black fallback");
+                return CreateBlackTexture((int)width, (int)height);
+            }
 
             // Create a cache key based on the parameters
             string cacheKey = $"{beatmapDir}_{backgroundFilename}";
@@ -65,31 +112,42 @@ namespace C4TX.SDL.Engine.Renderer
 
                         try
                         {
-                            var matchingFiles = Directory.GetFiles(songsDirectory, backgroundFilename, SearchOption.AllDirectories);
-                            if (matchingFiles.Length > 0)
+                            // Additional safety check to prevent searching for invalid files
+                            if (backgroundFilename.Length >= 5 && !backgroundFilename.StartsWith("."))
                             {
-                                backgroundPath = matchingFiles[0]; // Use the first match
-                                Console.WriteLine($"Found background at: {backgroundPath}");
+                                PerformanceMonitor.StartTiming("FileIO");
+                                var matchingFiles = Directory.GetFiles(songsDirectory, backgroundFilename, SearchOption.AllDirectories);
+                                PerformanceMonitor.EndTiming("FileIO");
+                                if (matchingFiles.Length > 0)
+                                {
+                                    backgroundPath = matchingFiles[0]; // Use the first match
+                                    Console.WriteLine($"Found background at: {backgroundPath}");
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"No matching background files found for: {backgroundFilename}, creating black fallback");
+                                    return CreateBlackTexture((int)width, (int)height);
+                                }
                             }
                             else
                             {
-                                Console.WriteLine($"No matching background files found for: {backgroundFilename}");
-                                return IntPtr.Zero;
+                                Console.WriteLine($"Skipping recursive search for invalid filename: {backgroundFilename}, creating black fallback");
+                                return CreateBlackTexture((int)width, (int)height);
                             }
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"Error searching for background files: {ex.Message}");
-                            return IntPtr.Zero;
+                            Console.WriteLine($"Error searching for background files: {ex.Message}, creating black fallback");
+                            return CreateBlackTexture((int)width, (int)height);
                         }
                     }
                 }
 
-                // If the background file doesn't exist, return null
+                // If the background file doesn't exist, create backup image black
                 if (!File.Exists(backgroundPath))
                 {
-                    Console.WriteLine($"Background image not found: {backgroundPath}");
-                    return IntPtr.Zero;
+                    Console.WriteLine($"Background image not found: {backgroundPath}, creating black fallback");
+                    return CreateBlackTexture((int)width, (int)height);
                 }
 
                 Console.WriteLine($"Loading background image: {backgroundPath}");
@@ -98,8 +156,8 @@ namespace C4TX.SDL.Engine.Renderer
                 var surface = SDL3_image.IMG_Load(backgroundPath);
                 if (surface == null)
                 {
-                    Console.WriteLine($"Failed to load background image: {SDL_GetError()}");
-                    return IntPtr.Zero;
+                    Console.WriteLine($"Failed to load background image: {SDL_GetError()}, creating black fallback");
+                    return CreateBlackTexture((int)width, (int)height);
                 }
 
                 SDL_Rect rect = new()
@@ -116,8 +174,8 @@ namespace C4TX.SDL.Engine.Renderer
 
                 if (texture == null)
                 {
-                    Console.WriteLine($"Failed to create texture from background image: {SDL_GetError()}");
-                    return IntPtr.Zero;
+                    Console.WriteLine($"Failed to create texture from background image: {SDL_GetError()}, creating black fallback");
+                    return CreateBlackTexture((int)width, (int)height);
                 }
 
                 // Cache the texture
@@ -127,8 +185,8 @@ namespace C4TX.SDL.Engine.Renderer
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading background texture: {ex.Message}");
-                return IntPtr.Zero;
+                Console.WriteLine($"Error loading background texture: {ex.Message}, creating black fallback");
+                return CreateBlackTexture((int)width, (int)height);
             }
         }
         public static bool LoadFonts()

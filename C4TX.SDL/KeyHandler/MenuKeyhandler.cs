@@ -160,14 +160,9 @@ namespace C4TX.SDL.KeyHandler
 
             if (scancode == SDL_Scancode.SDL_SCANCODE_F5)
             {
-                var oldIndexSet = _selectedSetIndex;
-                var oldIndexDiff = _selectedDifficultyIndex;
-
-                BeatmapEngine.ScanForBeatmaps();
-                _selectedSetIndex = oldIndexSet;
-                _selectedDifficultyIndex = oldIndexDiff;
+                // Refresh the beatmap database by scanning for new songs
+                RefreshBeatmapDatabase();
                 TriggerMapReload();
-
                 return;
             }
 
@@ -279,6 +274,8 @@ namespace C4TX.SDL.KeyHandler
 
                 if (scancode == SDL_Scancode.SDL_SCANCODE_UP)
                 {
+                    RenderEngine._pendingScrollToSelection = true;
+
                     var listItems = Engine.Renderer.RenderEngine.GetSongListItems();
 
                     if (listItems != null && listItems.Count > 0 && _availableBeatmapSets != null && _selectedSetIndex >= 0 && _selectedSetIndex < _availableBeatmapSets.Count)
@@ -309,6 +306,7 @@ namespace C4TX.SDL.KeyHandler
                 }
                 else if (scancode == SDL_Scancode.SDL_SCANCODE_DOWN)
                 {
+                    RenderEngine._pendingScrollToSelection = true;
                     var listItems = Engine.Renderer.RenderEngine.GetSongListItems();
 
                     if (listItems != null && listItems.Count > 0 && _availableBeatmapSets != null && _selectedSetIndex >= 0 && _selectedSetIndex < _availableBeatmapSets.Count)
@@ -344,6 +342,7 @@ namespace C4TX.SDL.KeyHandler
                 }
                 else if (scancode == SDL_Scancode.SDL_SCANCODE_LEFT || scancode == SDL_Scancode.SDL_SCANCODE_RIGHT)
                 {
+                    RenderEngine._pendingScrollToSelection = true;
                     if (_availableBeatmapSets != null && _availableBeatmapSets.Count > 0)
                     {
 
@@ -387,7 +386,7 @@ namespace C4TX.SDL.KeyHandler
                 }
 
                 // Display message that we're scanning
-                Engine.Renderer.RenderEngine.RenderLoadingAnimation("Scanning for new beatmaps...", 0, 1);
+                Engine.Renderer.RenderEngine.RenderLoadingAnimation("Scanning and validating new beatmaps...", 0, 1);
 
                 // Get database service with null check
                 BeatmapDatabaseService? databaseService = _beatmapService.DatabaseService;
@@ -422,65 +421,68 @@ namespace C4TX.SDL.KeyHandler
                         return;
                     }
 
-                    // Calculate difficulty ratings for the new beatmaps
+                    // Calculate difficulty ratings for new beatmaps in parallel
+                    Console.WriteLine($"Calculating difficulty for {newBeatmaps.Count} new beatmaps in parallel...");
+                    
                     int processedCount = 0;
-                    foreach (var newBeatmap in newBeatmaps)
+                    object progressLock = new object();
+                    
+                    Parallel.ForEach(newBeatmaps, new ParallelOptions 
+                    { 
+                        MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1) 
+                    }, newBeatmap =>
                     {
-                        processedCount++;
-                        // Show progress of difficulty calculation
-                        int progress = (int)((float)processedCount / newBeatmaps.Count * 100);
-                        Engine.Renderer.RenderEngine.RenderLoadingAnimation($"Calculating difficulty ({progress}%)...", processedCount, newBeatmaps.Count);
-
                         try
                         {
-                            // Skip if the beatmap is known to be corrupted
+                            // Skip if corrupted
                             if (databaseService.IsCorruptedBeatmap(newBeatmap.Path))
                             {
-                                Console.WriteLine($"Skipping corrupted beatmap for difficulty calculation: {newBeatmap.Path}");
-                                continue;
+                                Console.WriteLine($"Skipping corrupted beatmap: {newBeatmap.Path}");
+                                return;
                             }
 
-                            // Load beatmap and calculate difficulty
-                            BeatmapEngine.LoadBeatmap(newBeatmap.Path, true);
-
-                            // Check if loading was successful
-                            if (_currentBeatmap != null)
+                            // Load and calculate difficulty using thread-safe operations
+                            var beatmap = _beatmapService.LoadBeatmapFromFile(newBeatmap.Path);
+                            if (beatmap != null)
                             {
-                                // Calculate and save difficulty rating
-                                float rating = (float)BeatmapEngine.CalculateAndUpdateDifficultyRating(_currentBeatmap, 1.0, true);
+                                // Calculate difficulty rating
+                                var difficultyService = new DifficultyRatingService();
+                                double rating = difficultyService.CalculateDifficulty(beatmap, 1.0);
 
-                                // Update the beatmap object
-                                newBeatmap.DifficultyRating = rating;
-                                newBeatmap.CachedDifficultyRating = rating;
+                                // Update beatmap object
+                                newBeatmap.DifficultyRating = (float)rating;
+                                newBeatmap.CachedDifficultyRating = (float)rating;
 
-                                // Update in the database
-                                databaseService.UpdateDifficultyRating(newBeatmap.Id, rating);
-
-                                // Also get BPM and Length if available
-                                if (_currentBeatmap.BPM > 0 || _currentBeatmap.Length > 0)
+                                // Update in database (thread-safe)
+                                databaseService.UpdateDifficultyRating(newBeatmap.Id, (float)rating);
+                                
+                                if (beatmap.BPM > 0 || beatmap.Length > 0)
                                 {
-                                    databaseService.UpdateBeatmapDetails(newBeatmap.Id,
-                                        _currentBeatmap.BPM,
-                                        _currentBeatmap.Length);
+                                    databaseService.UpdateBeatmapDetails(newBeatmap.Id, beatmap.BPM, beatmap.Length);
                                 }
                             }
                             else
                             {
-                                // Mark as corrupted if loading failed
-                                databaseService.AddCorruptedBeatmap(newBeatmap.Path, "Failed to load beatmap for difficulty calculation");
-                                Console.WriteLine($"Failed to load beatmap for difficulty calculation: {newBeatmap.Path}");
+                                databaseService.AddCorruptedBeatmap(newBeatmap.Path, "Failed to load for parallel difficulty calculation");
                             }
                         }
                         catch (Exception ex)
                         {
-                            // Mark as corrupted and continue
-                            databaseService.AddCorruptedBeatmap(newBeatmap.Path, ex.Message);
-                            Console.WriteLine($"Error calculating difficulty for {newBeatmap.Path}: {ex.Message}");
+                            databaseService.AddCorruptedBeatmap(newBeatmap.Path, $"Parallel calculation error: {ex.Message}");
+                            Console.WriteLine($"Error in parallel difficulty calculation for {newBeatmap.Path}: {ex.Message}");
                         }
 
-                        // Small delay to not freeze the UI
-                        SDL_Delay(1);
-                    }
+                        // Update progress thread-safely
+                        lock (progressLock)
+                        {
+                            processedCount++;
+                            if (processedCount % 5 == 0 || processedCount == newBeatmaps.Count)
+                            {
+                                int progress = (int)((float)processedCount / newBeatmaps.Count * 100);
+                                Engine.Renderer.RenderEngine.RenderLoadingAnimation($"Calculating difficulty in parallel ({progress}%)...", processedCount, newBeatmaps.Count);
+                            }
+                        }
+                    });
 
                     _availableBeatmapSets = reloadedBeatmapSets;
 

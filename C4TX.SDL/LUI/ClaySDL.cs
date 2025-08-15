@@ -45,6 +45,26 @@ namespace C4TX.SDL.LUI
         public static SDL_Renderer* Renderer;
 
         public static nint[] Fonts = new nint[10];
+        
+        // Glyph texture cache to avoid creating/destroying textures every frame
+        private static Dictionary<(int fontId, char glyph, SDL_Color color), nint> _glyphCache = new Dictionary<(int, char, SDL_Color), nint>();
+        private static Dictionary<(int fontId, string text), (int width, int height)> _textSizeCache = new Dictionary<(int, string), (int, int)>();
+        
+        // Cleanup cache periodically
+        private static int _frameCounter = 0;
+        private static void CleanupCaches()
+        {
+            if (_glyphCache.Count > 1000) // Prevent memory bloat
+            {
+                foreach (var texture in _glyphCache.Values)
+                {
+                    if (texture != nint.Zero)
+                        SDL_DestroyTexture((SDL_Texture*)texture);
+                }
+                _glyphCache.Clear();
+                _textSizeCache.Clear();
+            }
+        }
 
         private static SDL_Color ToColor(Clay_Color color) => new SDL_Color
         {
@@ -72,6 +92,13 @@ namespace C4TX.SDL.LUI
         {
             if (Renderer == null)
                 throw new InvalidOperationException("Sdl2Clay.Renderer is null!");
+                
+            // Periodic cache cleanup to prevent memory bloat
+            _frameCounter++;
+            if (_frameCounter % 1800 == 0) // Cleanup every ~30 seconds at 60fps
+            {
+                CleanupCaches();
+            }
 
             for (int i = 0; i < array.length; i++)
             {
@@ -169,14 +196,24 @@ namespace C4TX.SDL.LUI
                             for (int ii = 0; ii < lines.Length; ii++)
                             {
                                 string line = lines[ii];
-
-                                for (int j = 0; j < line.Length; j++)
+                                
+                                // Use cached text size measurement
+                                var cacheKey = (fid, line);
+                                if (_textSizeCache.TryGetValue(cacheKey, out var cachedSize))
                                 {
-                                    char c = line[j];
-                                    int _, tw;
-                                    SDL3_ttf.TTF_GetStringSize((TTF_Font*)font, (byte*)&c, 1, &tw, &_);
-
-                                    lineWidths[ii] = tw;
+                                    lineWidths[ii] = cachedSize.width;
+                                }
+                                else
+                                {
+                                    // Measure entire line at once instead of character by character
+                                    int lineWidth = 0, lineHeight = 0;
+                                    var lineBytes = System.Text.Encoding.UTF8.GetBytes(line);
+                                    fixed (byte* lineBytesPtr = lineBytes)
+                                    {
+                                        SDL3_ttf.TTF_GetStringSize((TTF_Font*)font, lineBytesPtr, (nuint)lineBytes.Length, &lineWidth, &lineHeight);
+                                    }
+                                    lineWidths[ii] = lineWidth;
+                                    _textSizeCache[cacheKey] = (lineWidth, lineHeight);
                                 }
                             }
 
@@ -203,17 +240,36 @@ namespace C4TX.SDL.LUI
 
                                 foreach (char c in line)
                                 {
-                                    nint surf = (nint)SDL3_ttf.TTF_RenderGlyph_Blended((TTF_Font*)font, c, col);
-                                    if (surf != nint.Zero)
+                                    // Use cached glyph texture
+                                    var glyphKey = (fid, c, col);
+                                    nint tex = nint.Zero;
+                                    float gw = 0, gh = 0;
+                                    
+                                    if (_glyphCache.TryGetValue(glyphKey, out tex))
                                     {
-                                        nint tex = (nint)SDL_CreateTextureFromSurface(Renderer, (SDL_Surface*)surf);
-                                        SDL_DestroySurface((SDL_Surface*)surf);
-                                        float gw, gh;
                                         SDL_GetTextureSize((SDL_Texture*)tex, &gw, &gh);
+                                    }
+                                    else
+                                    {
+                                        // Create new glyph texture and cache it
+                                        nint surf = (nint)SDL3_ttf.TTF_RenderGlyph_Blended((TTF_Font*)font, c, col);
+                                        if (surf != nint.Zero)
+                                        {
+                                            tex = (nint)SDL_CreateTextureFromSurface(Renderer, (SDL_Surface*)surf);
+                                            SDL_DestroySurface((SDL_Surface*)surf);
+                                            
+                                            if (tex != nint.Zero)
+                                            {
+                                                SDL_GetTextureSize((SDL_Texture*)tex, &gw, &gh);
+                                                _glyphCache[glyphKey] = tex;
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (tex != nint.Zero)
+                                    {
                                         var dst = new SDL_FRect { x = penX, y = penY, w = gw, h = gh };
                                         SDL_RenderTexture(Renderer, (SDL_Texture*)tex, null, &dst);
-                                        SDL_DestroyTexture((SDL_Texture*)tex);
-
                                         penX += gw + (int)ls;
                                     }
                                 }
@@ -276,13 +332,22 @@ namespace C4TX.SDL.LUI
         {
             SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, col.a);
 
+            // More efficient circle drawing using SDL_FRect for better batching
+            int radiusSquared = radius * radius;
             for (int dy = -radius; dy <= radius; dy++)
             {
-                int dx = (int)MathF.Floor(MathF.Sqrt(radius * radius - dy * dy));
-                SDL_RenderLine(renderer,
-                    cx - dx, cy + dy,
-                    cx + dx, cy + dy
-                );
+                int dx = (int)MathF.Sqrt(radiusSquared - dy * dy);
+                if (dx > 0)
+                {
+                    var lineRect = new SDL_FRect
+                    {
+                        x = cx - dx,
+                        y = cy + dy,
+                        w = 2 * dx,
+                        h = 1
+                    };
+                    SDL_RenderFillRect(renderer, &lineRect);
+                }
             }
         }
     }

@@ -9,33 +9,40 @@ using System.Runtime.InteropServices;
 using C4TX.SDL.LUI;
 using System.Drawing;
 using static System.Net.Mime.MediaTypeNames;
+using C4TX.SDL.Services;
 
 namespace C4TX.SDL.Engine.Renderer
 {
     public partial class RenderEngine
     {
         private static ClayStringCollection _clayString = new ClayStringCollection();
-        private static Document[] _documents = [
-            new Document
-            {
-                Title = _clayString.Get("Squirrels"),
-                Contents = _clayString.Get(
-                    """The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.The Secret Life of Squirrels: Nature's Clever Acrobats\n""Squirrels are often overlooked creatures, dismissed as mere park inhabitants or backyard nuisances. Yet, beneath their fluffy tails and twitching noses lies an intricate world of cunning, agility, and survival tactics that are nothing short of fascinating. As one of the most common mammals in North America, squirrels have adapted to a wide range of environments from bustling urban centers to tranquil forests and have developed a variety of unique behaviors that continue to intrigue scientists and nature enthusiasts alike.\n""\n""Master Tree Climbers\n""At the heart of a squirrel's skill set is its impressive ability to navigate trees with ease. Whether they're darting from branch to branch or leaping across wide gaps, squirrels possess an innate talent for acrobatics. Their powerful hind legs, which are longer than their front legs, give them remarkable jumping power. With a tail that acts as a counterbalance, squirrels can leap distances of up to ten times the length of their body, making them some of the best aerial acrobats in the animal kingdom.\n""But it's not just their agility that makes them exceptional climbers. Squirrels' sharp, curved claws allow them to grip tree bark with precision, while the soft pads on their feet provide traction on slippery surfaces. Their ability to run at high speeds and scale vertical trunks with ease is a testament to the evolutionary adaptations that have made them so successful in their arboreal habitats.\n""\n""Food Hoarders Extraordinaire\n""Squirrels are often seen frantically gathering nuts, seeds, and even fungi in preparation for winter. While this behavior may seem like instinctual hoarding, it is actually a survival strategy that has been honed over millions of years. Known as \"scatter hoarding,\" squirrels store their food in a variety of hidden locations, often burying it deep in the soil or stashing it in hollowed-out tree trunks.\n""Interestingly, squirrels have an incredible memory for the locations of their caches. Research has shown that they can remember thousands of hiding spots, often returning to them months later when food is scarce. However, they don't always recover every stash some forgotten caches eventually sprout into new trees, contributing to forest regeneration. This unintentional role as forest gardeners highlights the ecological importance of squirrels in their ecosystems.\n""\n""The Great Squirrel Debate: Urban vs. Wild\n""While squirrels are most commonly associated with rural or wooded areas, their adaptability has allowed them to thrive in urban environments as well. In cities, squirrels have become adept at finding food sources in places like parks, streets, and even garbage cans. However, their urban counterparts face unique challenges, including traffic, predators, and the lack of natural shelters. Despite these obstacles, squirrels in urban areas are often observed using human infrastructure such as buildings, bridges, and power lines as highways for their acrobatic escapades.\n""There is, however, a growing concern regarding the impact of urban life on squirrel populations. Pollution, deforestation, and the loss of natural habitats are making it more difficult for squirrels to find adequate food and shelter. As a result, conservationists are focusing on creating squirrel-friendly spaces within cities, with the goal of ensuring these resourceful creatures continue to thrive in both rural and urban landscapes.\n""\n""A Symbol of Resilience\n""In many cultures, squirrels are symbols of resourcefulness, adaptability, and preparation. Their ability to thrive in a variety of environments while navigating challenges with agility and grace serves as a reminder of the resilience inherent in nature. Whether you encounter them in a quiet forest, a city park, or your own backyard, squirrels are creatures that never fail to amaze with their endless energy and ingenuity.\n""In the end, squirrels may be small, but they are mighty in their ability to survive and thrive in a world that is constantly changing. So next time you spot one hopping across a branch or darting across your lawn, take a moment to appreciate the remarkable acrobat at work a true marvel of the natural world.\n""")
-            },
-        ];
-        private static int _selectedDocumentIndex;
 
         static Vector2 deltaScroll = new Vector2(0, 0);
 
         public static Clay_ElementId publicId;
 
+        public static void PushScrollDeltaX(float amount)
+        {
+            deltaScroll.X = amount;
+        }
+
         public static void RenderMenu()
         {
+            PerformanceMonitor.StartFrame();
+            PerformanceMonitor.StartTiming("UIRender");
+            
+            // Periodically cleanup difficulty cache to prevent memory leaks
+            if (DateTime.Now.Millisecond % 100 == 0) // Cleanup every ~100ms
+            {
+                CleanupCaches();
+            }
+            
             Clay.SetLayoutDimensions(new Clay_Dimensions(RenderEngine._windowWidth, RenderEngine._windowHeight));
             Clay.SetPointerState(mousePosition, mouseDown);
             Clay.UpdateScrollContainers(true, mouseScroll, (float)_deltaTime);
 
-            deltaScroll = mouseScroll * 1000f * (float)_deltaTime;
+            deltaScroll = mouseScroll * 25 * 1000f * (float)_deltaTime;
+            mouseScroll = new Vector2();
 
             var _contentBackgroundColor = new Clay_Color(30, 30, 40, 255);
 
@@ -54,23 +61,33 @@ namespace C4TX.SDL.Engine.Renderer
                 },
             }))
             {
-                using(Clay.Element(new()
+                if (_availableBeatmapSets.Count > 0)
                 {
-                    id = Clay.Id("LRContainer"),
-                    layout = new()
+                    using (Clay.Element(new()
                     {
-                        layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
-                        sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
-                        padding = Clay_Padding.All(16),
-                        childGap = 16,
+                        id = Clay.Id("LRContainer"),
+                        layout = new()
+                        {
+                            layoutDirection = Clay_LayoutDirection.CLAY_LEFT_TO_RIGHT,
+                            sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+                            padding = Clay_Padding.All(16),
+                            childGap = 16,
+                        }
+                    }))
+                    {
+                        NDrawSongSelectionPanel();
+                        NDrawSongInfoPanel();
                     }
-                }))
+                }
+                else
                 {
-                    NDrawSongSelectionPanel();
-                    NDrawSongInfoPanel();
+                    Clay.OpenTextElement("No beatmaps found. You can import your osu! Songs by directly copying the folders from osu!/Songs into appdata/local/c4tx/Songs/ !", new Clay_TextElementConfig
+                    {
+                        fontSize = 24,
+                        textColor = new Clay_Color(255, 255, 255),
+                    });
                 }
                 NDrawInstructionPanel();
-                NDrawProfilePanel();
             }
 
 
@@ -81,8 +98,50 @@ namespace C4TX.SDL.Engine.Renderer
                 b = 255,
                 a = 255
             }, true, true);
+            
+            PerformanceMonitor.EndTiming("UIRender");
+            PerformanceMonitor.EndFrame();
         }
 
+
+
+       class ScrollState
+        {
+            public Vector2 scroll;
+            public bool hover;
+        }
+
+        static Vector2 scrollVelocity;
+
+        static Dictionary<Clay_ElementId, ScrollState> scrollStates = new ();
+        
+        // Old difficulty calculation variables removed - now handled by BackgroundProcessor		
+		// Virtualization/cache
+		static List<float> _setHeights = new();
+		static float _estimatedCollapsedSetHeight = 64f; // tune after you see real sizes
+		static float _estimatedMapRowHeight = 86f;       // tune after you see real sizes
+		static float _listItemGap = 1f;                  // childGap used in the list panel
+		public static bool _pendingScrollToSelection = false;   // wait one frame after expansion
+		static float _scrollAnimationStartTime = 0f;           // when the animation started
+		static float _scrollAnimationStartY = 0f;              // scroll position when animation started
+		static float _scrollAnimationTargetY = 0f;             // target scroll position
+		        static int _lastRenderedCount = 0;                     // debug: track rendered items
+        
+        // State tracking to prevent per-frame operations
+        public static string _lastBackgroundRequest = "";             // track last background request
+        public static double _lastDifficultyRate = 0;                 // track last difficulty rate
+        
+        // Cache cleanup to prevent memory leaks
+        private static void CleanupCaches()
+        {
+            // Cleanup optimization caches
+            OptimizationHelpers.CleanupPreloadingTasks();
+            
+            // Cleanup background processor caches
+            BackgroundProcessor.CleanupCaches();
+        }
+
+        // Old difficulty calculation methods removed - now handled by BackgroundProcessor
 
         private static void NRenderMapItem(BeatmapInfo map, int index)
         {
@@ -101,6 +160,12 @@ namespace C4TX.SDL.Engine.Renderer
             }))
             {
 
+                if (index == _selectedDifficultyIndex)
+                {
+                    var a = Clay.GetElementData(sid).boundingBox;
+                    selectedBox = new(a.x, a.y);
+                }
+
                 Clay.OpenTextElement(map.Difficulty, new Clay_TextElementConfig
                 {
                     fontSize = 20,
@@ -112,132 +177,314 @@ namespace C4TX.SDL.Engine.Renderer
                     if (index == _selectedDifficultyIndex)
                     {
                         TriggerEnterGame();
-                    } else
-                    {
-                        _selectedDifficultyIndex = index;
-                        TriggerMapReload();
-                    }
+                    					} else
+					{
+						_selectedDifficultyIndex = index;
+						TriggerMapReload();
+						_pendingScrollToSelection = true; // defer scroll until after layout update
+						
+						// Reset state tracking for new difficulty
+						_lastBackgroundRequest = "";
+						_lastDifficultyRate = 0;
+					}
                 }
             }
         }
 
-        private static void NRenderSetItem(BeatmapSet set, int index)
-        {
-            var sid = Clay.Id($"SetItem#{set.GetHashCode()}");
-            using (Clay.Element(new()
-            {
-                id = sid,
-                backgroundColor =  index == _selectedSetIndex ? new Clay_Color(63, 61, 71) : 
-                    Wrapper.IsHovered(sid, mousePosition) ? new Clay_Color(43, 41, 51) : new Clay_Color(23, 21, 31),
-                layout = new()
-                {
-                    layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
-                    sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
-                    padding = Clay_Padding.All(16),
-                    childGap = 16,
-                }
-            }))
-            {
-                Clay.OpenTextElement(set.Title, new Clay_TextElementConfig
-                {
-                    fontSize = 20,
-                    textColor = new Clay_Color(255, 255, 255),
-                });
+        private static float songListUiSize = 0;
+        private static Vector2 selectedBox = new(0,0);
 
-                if (index != _selectedSetIndex)
-                {
+        		private static void NRenderSetItem(BeatmapSet set, int index)
+		{
+			var sid = Clay.Id($"SetItem#{set.GetHashCode()}");
+			using (Clay.Element(new()
+			{
+				id = sid,
+				backgroundColor =  index == _selectedSetIndex ? new Clay_Color(63, 61, 71) : 
+					Wrapper.IsHovered(sid, mousePosition) ? new Clay_Color(43, 41, 51) : new Clay_Color(23, 21, 31),
+				layout = new()
+				{
+					layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+					sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Grow()),
+					padding = Clay_Padding.All(16),
+					childGap = 16,
+				}
+			}))
+			{
+				Clay.OpenTextElement(set.Title, new Clay_TextElementConfig
+				{
+					fontSize = 20,
+					textColor = new Clay_Color(255, 255, 255),
+				});
 
-                    if (Wrapper.IsHovered(sid, mousePosition) && mouseDown)
-                    {
-                        _selectedSetIndex = index;
-                        _selectedDifficultyIndex = 0;
-                        TriggerMapReload();
-                    }
+				if (index != _selectedSetIndex)
+				{
 
-                    return;
-                }
+					if (Wrapper.IsHovered(sid, mousePosition) && mouseDown)
+					{
+						_selectedSetIndex = index;
+						_selectedDifficultyIndex = 0;
+						TriggerMapReload();
+						_pendingScrollToSelection = true; // defer scroll until after expansion is measured
+					}
 
-                int bmc = _availableBeatmapSets![_selectedSetIndex].Beatmaps.Count;
+					// No expanded content, exit early
+					goto RecordHeightAndExit;
+				}
 
-                int startIndex = 0;
+				int bmc = _availableBeatmapSets![_selectedSetIndex].Beatmaps.Count;
 
-                int endIndex = bmc;
+				int startIndex = 0;
 
-                for (int i = startIndex; i < endIndex; i++)
-                {
-                    var map = _availableBeatmapSets[_selectedSetIndex].Beatmaps[i];
-                    if (map == null) continue;
-                    NRenderMapItem(map, i);
-                }
+				int endIndex = bmc;
 
-                
-            }
-        }
-        class ScrollState
-        {
-            public Vector2 scroll;
-            public bool hover;
-        }
+				for (int i = startIndex; i < endIndex; i++)
+				{
+					var map = _availableBeatmapSets[_selectedSetIndex].Beatmaps[i];
+					if (map == null) continue;
+					NRenderMapItem(map, i);
+				}
+			}
 
-        static Vector2 scrollVelocity;
+		RecordHeightAndExit:
+			// capture real height for virtualization calculations
+			var measured = Clay.GetElementData(sid).boundingBox.height;
+			while (_setHeights.Count <= index) _setHeights.Add(0);
+			_setHeights[index] = measured;
+		}
+        
+        		private static unsafe void NDrawSongSelectionPanel()
+		{
+			songListUiSize = 0;
+			Clay_ElementId sId = Clay.Id("SondSelectionPanel");
+			if (!scrollStates.ContainsKey(sId))
+			{
+				scrollStates.Add(sId, new());
+			}
+			using (Clay.Element(new()
+			{
+				id = sId,
+				backgroundColor = new Clay_Color(23, 21, 31),
+				layout = new()
+				{
+					layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+					sizing = new Clay_Sizing(Clay_SizingAxis.Percent(0.5f), Clay_SizingAxis.Grow()),
+					padding = Clay_Padding.All(16),
+					childGap = 1,
+				},
+				clip = new()
+				{
+					vertical = true,
+					horizontal = false,
+					childOffset = scrollStates[Clay.Id("SondSelectionPanel")].scroll
+				}
+			}))
+			{
+				if (Wrapper.IsHovered(sId, mousePosition))
+				{
+					scrollVelocity += deltaScroll;
+					scrollStates[sId].scroll += scrollVelocity;
+					scrollStates[sId].hover = true;
+				}
 
-        static Dictionary<Clay_ElementId, ScrollState> scrollStates = new ();
-        private static unsafe void NDrawSongSelectionPanel()
-        {
-            Clay_ElementId sId = Clay.Id("SondSelectionPanel");
-            if (!scrollStates.ContainsKey(sId))
-            {
-                scrollStates.Add(sId, new());
-            }
-            using (Clay.Element(new()
-            {
-                id = sId,
-                backgroundColor = new Clay_Color(23, 21, 31),
-                layout = new()
-                {
-                    layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
-                    sizing = new Clay_Sizing(Clay_SizingAxis.Percent(0.5f), Clay_SizingAxis.Grow()),
-                    padding = Clay_Padding.All(16),
-                    childGap = 1,
-                },
-                clip = new()
-                {
-                    vertical = true,
-                    horizontal = false,
-                    childOffset = scrollStates[sId].scroll
-                }
-            }))
-            {
-                if(Wrapper.IsHovered(sId, mousePosition))
-                {
-                    scrollVelocity += deltaScroll;
-                    scrollStates[sId].scroll += scrollVelocity;
-                    scrollStates[sId].hover = true;
-                }
+				if (scrollVelocity.LengthSquared() > 1)
+				{
+					scrollVelocity *= Math.Min(0.1f, (float)_deltaTime * 10f);
+				}
+				else
+				{
+					scrollVelocity = new Vector2(0, 0);
+				}
 
-                if (scrollVelocity.LengthSquared() > 1)
-                {
-                    scrollVelocity *= (float)_deltaTime * 10f;
-                } else
-                {
-                    scrollVelocity = new Vector2(0, 0);
-                }
+				// Virtualization helpers
+				float ViewportHeight() => Clay.GetElementData(sId).boundingBox.height;
 
-                // Draw all.
+				float EstimateSetHeight(int idx)
+				{
+					// Use cached height if available
+					if (idx < _setHeights.Count && _setHeights[idx] > 0f) 
+						return _setHeights[idx];
 
-                int startIndex = 0;
+					// Fast path for non-selected (collapsed) sets
+					if (idx != _selectedSetIndex) 
+						return _estimatedCollapsedSetHeight;
 
-                int count = _availableBeatmapSets.Count;
+					// Only calculate expanded height for selected set
+					if (_availableBeatmapSets != null && idx < _availableBeatmapSets.Count)
+					{
+						int bmc = _availableBeatmapSets[idx].Beatmaps.Count;
+						return _estimatedCollapsedSetHeight + 16f + Math.Max(0, bmc) * (_estimatedMapRowHeight + 16f);
+					}
+					
+					return _estimatedCollapsedSetHeight;
+				}
 
-                for (int i = startIndex; i < count; i++)
-                {
-                    var set = _availableBeatmapSets[i];
-                    if (set == null) continue;
-                    NRenderSetItem(set, i);
-                }
-            }
-        }
+				// Total content height (approx)
+				int count = _availableBeatmapSets.Count;
+				if (_setHeights.Count < count) { while (_setHeights.Count < count) _setHeights.Add(0); }
 
+				float totalHeight = 0f;
+				for (int i = 0; i < count; i++)
+				{
+					totalHeight += EstimateSetHeight(i);
+					if (i < count - 1) totalHeight += _listItemGap;
+				}
+				songListUiSize = totalHeight; // debug/readout if needed
+
+				// Clamp scroll (note: our childOffset uses negative-for-up convention)
+				float viewportH = ViewportHeight();
+				float maxScrollY = Math.Max(0f, totalHeight - viewportH);
+				float contentScrollY = -scrollStates[sId].scroll.Y;
+				contentScrollY = Math.Max(0f, Math.Min(maxScrollY, contentScrollY));
+				scrollStates[sId].scroll.Y = -contentScrollY;
+
+				// Handle pending scroll to selection after expansion is measured
+				if (_pendingScrollToSelection && count > 0)
+				{
+					// Check if the selected set has been properly measured (expanded)
+					bool selectedSetMeasured = (_selectedSetIndex < _setHeights.Count && _setHeights[_selectedSetIndex] > 0f);
+					
+					if (selectedSetMeasured)
+					{
+						float targetTop = 0f;
+						for (int i = 0; i < Math.Min(_selectedSetIndex, count); i++)
+						{
+							targetTop += EstimateSetHeight(i);
+							targetTop += _listItemGap;
+						}
+
+						// Add offset for selected difficulty within the expanded set using ACTUAL measured height
+						if (_selectedSetIndex < count && _selectedSetIndex < _setHeights.Count)
+						{
+							float actualSetHeight = _setHeights[_selectedSetIndex];
+							float headerHeight = _estimatedCollapsedSetHeight;
+							
+							// Calculate how many difficulties are in this set
+							int diffCount = _availableBeatmapSets[_selectedSetIndex].Beatmaps.Count;
+							
+							// If we have an actual measured height, calculate the per-difficulty height more accurately
+							if (diffCount > 0)
+							{
+								float contentHeight = actualSetHeight - headerHeight - 32f; // subtract padding
+								float actualDiffHeight = contentHeight / diffCount;
+								float diffOffset = headerHeight + (_selectedDifficultyIndex * actualDiffHeight);
+								targetTop += diffOffset;
+							}
+						}
+
+						// Center the target position in the middle of the viewport
+						float targetScroll = targetTop - (viewportH * 0.5f);
+						targetScroll = Math.Max(0f, Math.Min(maxScrollY, targetScroll));
+
+						// Initialize animation if not started yet
+						if (_scrollAnimationStartTime == 0f)
+						{
+							_scrollAnimationStartTime = (float)_currentTime;
+							_scrollAnimationStartY = contentScrollY;
+							_scrollAnimationTargetY = targetScroll;
+						}
+
+						// Calculate animation progress (0 to 1 over 1 second)
+						float animationDuration = 10.0f; // Always 1 second
+						float elapsed = (float)_currentTime - _scrollAnimationStartTime;
+						float progress = Math.Min(1.0f, elapsed / animationDuration);
+
+						// Use smooth easing function (ease-out cubic)
+						float easedProgress = 1f - (float)Math.Pow(1f - progress, 3f);
+
+						// Interpolate between start and target
+						float newScrollY = _scrollAnimationStartY + (_scrollAnimationTargetY - _scrollAnimationStartY) * easedProgress;
+						newScrollY = Math.Max(0f, Math.Min(maxScrollY, newScrollY));
+						scrollStates[sId].scroll.Y = -newScrollY;
+
+						// Complete animation when progress reaches 1
+						if (progress >= 1.0f)
+						{
+							_pendingScrollToSelection = false;
+							_scrollAnimationStartTime = 0f; // Reset for next animation
+						}
+					}
+					// If not measured yet, keep the flag and try again next frame
+				}
+
+				// Compute visible window with minimal overscan for performance
+				float overscan = Math.Min(50f, _estimatedCollapsedSetHeight * 2f); // Very tight overscan - just 2 items worth
+				int startIndex = 0;
+				float y = 0f;
+				
+				// Find first visible item (binary search would be even faster for 1000+ items)
+				while (startIndex < count)
+				{
+					float h = EstimateSetHeight(startIndex);
+					if (y + h >= contentScrollY - overscan) break;
+					y += h + _listItemGap;
+					startIndex++;
+				}
+
+				// Find last visible item
+				int endIndex = startIndex;
+				float y2 = y;
+				while (endIndex < count)
+				{
+					float h = EstimateSetHeight(endIndex);
+					if (y2 > contentScrollY + viewportH + overscan) break;
+					y2 += h + _listItemGap;
+					endIndex++;
+				}
+				
+				// Clamp to reasonable bounds for very large lists
+				endIndex = Math.Min(endIndex, startIndex + 50); // Never render more than 50 items at once
+
+				// Top spacer
+				if (y > 0f)
+				{
+					using (Clay.Element(new()
+					{
+						layout = new()
+						{
+							layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+							sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Fixed(y)),
+						}
+					})) { }
+				}
+
+				// Render only visible sets
+				_lastRenderedCount = Math.Max(0, endIndex - startIndex);
+				for (int i = startIndex; i < endIndex; i++)
+				{
+					var set = _availableBeatmapSets[i];
+					if (set == null) continue;
+					NRenderSetItem(set, i);
+					if (i < endIndex - 1)
+					{
+						// emulate list gap; using empty spacer avoids draw cost
+						using (Clay.Element(new()
+						{
+							layout = new()
+							{
+								layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+								sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Fixed(_listItemGap)),
+							}
+						})) { }
+					}
+				}
+
+				// Bottom spacer
+				float bottomSpacer = Math.Max(0f, totalHeight - y2);
+				if (bottomSpacer > 0f)
+				{
+					using (Clay.Element(new()
+					{
+						layout = new()
+						{
+							layoutDirection = Clay_LayoutDirection.CLAY_TOP_TO_BOTTOM,
+							sizing = new Clay_Sizing(Clay_SizingAxis.Grow(), Clay_SizingAxis.Fixed(bottomSpacer)),
+						}
+					})) { }
+				}
+			}
+		}
+        
         private unsafe static void NDrawSongInfoPanel()
         {
             var sid = Clay.Id("SongInfoPanel");
@@ -279,9 +526,22 @@ namespace C4TX.SDL.Engine.Renderer
                     string cacheKey = $"{beatmapDir}_{_currentBeatmap.BackgroundFilename}";
                     if (_lastLoadedBackgroundKey != cacheKey || _currentMenuBackgroundTexture == IntPtr.Zero)
                     {
-                        // Load the background image from the beatmap directory
-                        _currentMenuBackgroundTexture = LoadBackgroundTexture(beatmapDir, _currentBeatmap.BackgroundFilename, width, height);
-                        _lastLoadedBackgroundKey = cacheKey;
+                        // Check if texture is ready before trying to load it
+                        if (BackgroundProcessor.IsTextureReady(beatmapDir, _currentBeatmap.BackgroundFilename, width, height))
+                        {
+                            _currentMenuBackgroundTexture = BackgroundProcessor.GetBackgroundTexture(beatmapDir, _currentBeatmap.BackgroundFilename, width, height);
+                            _lastLoadedBackgroundKey = cacheKey;
+                        }
+                        else
+                        {
+                            // Only start preloading if not already requested
+                            string requestKey = $"{beatmapDir}_{_currentBeatmap.BackgroundFilename}_{width}x{height}";
+                            if (_lastBackgroundRequest != requestKey)
+                            {
+                                BackgroundProcessor.PreloadBackgroundTexture(beatmapDir, _currentBeatmap.BackgroundFilename, width, height);
+                                _lastBackgroundRequest = requestKey;
+                            }
+                        }
                     }
 
                     backgroundTexture = _currentMenuBackgroundTexture;
@@ -294,26 +554,56 @@ namespace C4TX.SDL.Engine.Renderer
                     string bgDir = Path.GetDirectoryName(_availableBeatmapSets[_selectedSetIndex].BackgroundPath) ?? string.Empty;
                     string bgFilename = Path.GetFileName(_availableBeatmapSets[_selectedSetIndex].BackgroundPath);
 
-                    backgroundTexture = LoadBackgroundTexture(bgDir, bgFilename, width, height);
+                    // Only get texture if it's ready, otherwise start preloading
+                    if (BackgroundProcessor.IsTextureReady(bgDir, bgFilename, width, height))
+                    {
+                        backgroundTexture = BackgroundProcessor.GetBackgroundTexture(bgDir, bgFilename, width, height);
+                    }
+                    else
+                    {
+                        // Only start preloading if not already requested
+                        string requestKey = $"{bgDir}_{bgFilename}_{width}x{height}";
+                        if (_lastBackgroundRequest != requestKey)
+                        {
+                            BackgroundProcessor.PreloadBackgroundTexture(bgDir, bgFilename, width, height);
+                            _lastBackgroundRequest = requestKey;
+                        }
+                    }
                 }
 
                 // Additional fallback - search in the song directory
                 if (backgroundTexture == IntPtr.Zero && !string.IsNullOrEmpty(_availableBeatmapSets[_selectedSetIndex].DirectoryPath))
                 {
                     // Try to find any image file in the song directory
-                    try
-                    {
-                        string[] imageExtensions = { "*.jpg", "*.jpeg", "*.png", "*.bmp" };
-                        foreach (var ext in imageExtensions)
+                                            try
                         {
-                            var imageFiles = Directory.GetFiles(_availableBeatmapSets[_selectedSetIndex].DirectoryPath, ext);
+                            PerformanceMonitor.StartTiming("FileIO");
+                            string[] imageExtensions = { "*.jpg", "*.jpeg", "*.png", "*.bmp" };
+                            foreach (var ext in imageExtensions)
+                            {
+                                var imageFiles = OptimizationHelpers.GetFilesCached(_availableBeatmapSets[_selectedSetIndex].DirectoryPath, ext);
+                                PerformanceMonitor.EndTiming("FileIO");
                             if (imageFiles.Length > 0)
                             {
                                 string imageFile = Path.GetFileName(imageFiles[0]);
 
-                                backgroundTexture = LoadBackgroundTexture(_availableBeatmapSets[_selectedSetIndex].DirectoryPath, imageFile, width, height);
-                                if (backgroundTexture != IntPtr.Zero)
-                                    break;
+                                // Only get texture if it's ready, otherwise start preloading
+                                if (BackgroundProcessor.IsTextureReady(_availableBeatmapSets[_selectedSetIndex].DirectoryPath, imageFile, width, height))
+                                {
+                                    backgroundTexture = BackgroundProcessor.GetBackgroundTexture(_availableBeatmapSets[_selectedSetIndex].DirectoryPath, imageFile, width, height);
+                                    if (backgroundTexture != IntPtr.Zero)
+                                        break;
+                                }
+                                else
+                                {
+                                    // Only start preloading if not already requested
+                                    string requestKey = $"{_availableBeatmapSets[_selectedSetIndex].DirectoryPath}_{imageFile}_{width}x{height}";
+                                    if (_lastBackgroundRequest != requestKey)
+                                    {
+                                        BackgroundProcessor.PreloadBackgroundTexture(_availableBeatmapSets[_selectedSetIndex].DirectoryPath, imageFile, width, height);
+                                        _lastBackgroundRequest = requestKey;
+                                    }
+                                }
                             }
                         }
                     }
@@ -480,29 +770,33 @@ namespace C4TX.SDL.Engine.Renderer
                             Clay_TextElementConfigWrapMode.CLAY_TEXT_WRAP_NEWLINES,
                             sicId); 
 
+                        // Get cached difficulty rating (no per-frame calculation!)
                         double difficultyRating = 0;
-                        string diffText = "No difficulty rating";
-                        if (currentBeatmap.CachedDifficultyRating.HasValue)
+                        if (_currentBeatmap != null)
                         {
-                            // Check if we need to calculate with current rate
-                            if (Math.Abs(currentBeatmap.LastCachedRate - GameEngine._currentRate) > 0.01) // Small threshold for float comparison
+                            string mapHash = _currentBeatmap.MapHash ?? _currentBeatmap.Id;
+                            if (BackgroundProcessor.IsDifficultyReady(mapHash, GameEngine._currentRate))
                             {
-                                // Recalculate for current rate if not already done
-                                if (_currentBeatmap != null)
-                                {
-                                    difficultyRating = GameEngine._difficultyRatingService.CalculateDifficulty(_currentBeatmap, GameEngine._currentRate);
-                                }
-                                else
-                                {
-                                    difficultyRating = currentBeatmap.CachedDifficultyRating.Value;
-                                }
+                                difficultyRating = BackgroundProcessor.GetDifficultyRating(
+                                    _currentBeatmap, 
+                                    GameEngine._currentRate, 
+                                    mapHash
+                                );
                             }
                             else
                             {
-                                // Use existing cached value
-                                difficultyRating = currentBeatmap.CachedDifficultyRating.Value;
+                                // Only start calculation if rate changed or not already requested
+                                if (_lastDifficultyRate != GameEngine._currentRate)
+                                {
+                                    BackgroundProcessor.PreloadDifficultyCalculation(_currentBeatmap, GameEngine._currentRate, mapHash);
+                                    _lastDifficultyRate = GameEngine._currentRate;
+                                }
                             }
-
+                        }
+                        string diffText = "No difficulty rating";
+                        
+                        if (difficultyRating > 0)
+                        {
                             // Display the difficulty rating with rate applied
                             diffText = $"{difficultyRating:F2} *";
                         }
@@ -901,7 +1195,17 @@ namespace C4TX.SDL.Engine.Renderer
                         // Cache miss - fetch scores from service
                         Console.WriteLine($"[DEBUG] Cache miss - fetching scores for map hash: {mapHash}");
                         _cachedScores = _scoreService.GetBeatmapScoresByHash(_username, mapHash);
-                        _cachedScores = _cachedScores.OrderByDescending(s => _difficultyRatingService.CalculateDifficulty(GameEngine._currentBeatmap, s.PlaybackRate) * s.Accuracy).ToList();
+                        // Sort scores by cached difficulty (or base rating) to avoid blocking UI
+                        _cachedScores = _cachedScores.OrderByDescending(s => 
+                        {
+                            // Use cached difficulty if available, otherwise use base rating
+                            var currentBeatmapInfo = GameEngine._availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex];
+                            if (currentBeatmapInfo?.CachedDifficultyRating.HasValue == true)
+                            {
+                                return currentBeatmapInfo.CachedDifficultyRating.Value * s.Accuracy;
+                            }
+                            return s.Accuracy; // Fallback to just accuracy if no difficulty rating
+                        }).ToList();
                         _cachedScoreMapHash = mapHash;
                         _hasLoggedCacheHit = false;
                         _hasCheckedCurrentHash = true;
@@ -1154,6 +1458,18 @@ namespace C4TX.SDL.Engine.Renderer
                     }
                 }))
                 {
+
+                    using (Clay.Element(new()
+                    {
+
+                    }))
+                    {
+                        Clay.OpenTextElement($"Rendered: {_lastRenderedCount}/{_availableBeatmapSets?.Count ?? 0} sets | {PerformanceMonitor.GetPerformanceSummary()} | {BackgroundProcessor.GetCacheStats()}", new Clay_TextElementConfig
+                        {
+                            fontSize = 20,
+                            textColor = new Clay_Color(255, 255, 255),
+                        });
+                    }
 
                     string text = $"v{GameEngine.Version}";
                     int size, width, height;

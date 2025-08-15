@@ -1,0 +1,62 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <RootNamespace>Clay_cs</RootNamespace>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsAotCompatible>true</IsAotCompatible>
+        <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+        <TargetFrameworks>netstandard2.1;net9.0;net8.0</TargetFrameworks>
+        <LangVersion>latest</LangVersion>
+		<Deterministic>true</Deterministic>
+		<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <Version>0.3.1</Version>
+		<Authors>Orcolom</Authors>
+        <Description>Fully featured binding for clay.h
+GC safe, avoiding unneeded classes, and made as low level as possible</Description>
+        <RepositoryUrl>https://github.com/Orcolom/clay-cs/</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+		<PackageId>Orcolom.Clay_cs</PackageId>
+		<PackageLicenseFile>LICENSE.md</PackageLicenseFile>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageTags>clay, layout, clay.h, binding</PackageTags>
+        <PackageProjectUrl>https://github.com/Orcolom/clay-cs/</PackageProjectUrl>
+		<EnablePackageValidation>true</EnablePackageValidation>
+	</PropertyGroup>
+
+
+	<ItemGroup>
+		<Content Include="runtimes\**">
+			<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+			<Pack>true</Pack>
+			<PackagePath>runtimes</PackagePath>
+		</Content>
+	</ItemGroup>
+	
+    <ItemGroup>
+		<Content Remove="Clay.dll" />
+    </ItemGroup>
+	
+	<ItemGroup>
+		<None Include="..\README.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="..\LICENSE.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+		<None Include="..\CHANGELOG.md">
+			<Pack>True</Pack>
+			<PackagePath>\</PackagePath>
+		</None>
+	</ItemGroup>
+	
+    <ItemGroup>
+      <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.1.0" />
+    </ItemGroup>
+
+</Project>

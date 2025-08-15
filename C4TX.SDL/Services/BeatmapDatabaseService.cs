@@ -897,10 +897,132 @@ namespace C4TX.SDL.Services
             }
         }
 
-        // Add a method to scan for new maps without clearing the entire database
+        // Comprehensive beatmap validation - same as used in LoadBeatmapFromFile
+        private bool ValidateBeatmapFile(string filePath)
+        {
+            try
+            {
+                // Basic file existence check
+                if (!File.Exists(filePath))
+                {
+                    AddCorruptedBeatmap(filePath, "File does not exist");
+                    return false;
+                }
+
+                bool foundMode = false;
+                bool isMania = false;
+                bool foundHitObjects = false;
+                bool foundTimingPoints = false;
+                bool foundGeneral = false;
+                bool foundMetadata = false;
+                bool hasValidTitle = false;
+                bool hasValidArtist = false;
+                bool hasValidVersion = false;
+
+                using (var reader = new StreamReader(filePath))
+                {
+                    string? line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        line = line.Trim();
+                        
+                        // Check for required sections
+                        if (line == "[General]") foundGeneral = true;
+                        else if (line == "[Metadata]") foundMetadata = true;
+                        else if (line == "[TimingPoints]") foundTimingPoints = true;
+                        else if (line == "[HitObjects]") foundHitObjects = true;
+                        
+                        // Validate game mode
+                        else if (line.StartsWith("Mode:"))
+                        {
+                            foundMode = true;
+                            if (int.TryParse(line.Substring(5).Trim(), out int mode))
+                            {
+                                isMania = mode == 3;
+                                if (!isMania)
+                                {
+                                    AddCorruptedBeatmap(filePath, "Not a mania beatmap (Mode != 3)");
+                                    return false;
+                                }
+                            }
+                            else
+                            {
+                                AddCorruptedBeatmap(filePath, "Invalid Mode value");
+                                return false;
+                            }
+                        }
+                        
+                        // Validate metadata
+                        else if (line.StartsWith("Title:"))
+                        {
+                            hasValidTitle = !string.IsNullOrWhiteSpace(line.Substring(6).Trim());
+                        }
+                        else if (line.StartsWith("Artist:"))
+                        {
+                            hasValidArtist = !string.IsNullOrWhiteSpace(line.Substring(7).Trim());
+                        }
+                        else if (line.StartsWith("Version:"))
+                        {
+                            hasValidVersion = !string.IsNullOrWhiteSpace(line.Substring(8).Trim());
+                        }
+                    }
+                }
+
+                // Check if all required elements are present
+                if (!foundGeneral)
+                {
+                    AddCorruptedBeatmap(filePath, "Missing [General] section");
+                    return false;
+                }
+                if (!foundMetadata)
+                {
+                    AddCorruptedBeatmap(filePath, "Missing [Metadata] section");
+                    return false;
+                }
+                if (!foundTimingPoints)
+                {
+                    AddCorruptedBeatmap(filePath, "Missing [TimingPoints] section");
+                    return false;
+                }
+                if (!foundHitObjects)
+                {
+                    AddCorruptedBeatmap(filePath, "Missing [HitObjects] section");
+                    return false;
+                }
+                if (!foundMode)
+                {
+                    AddCorruptedBeatmap(filePath, "Missing Mode specification");
+                    return false;
+                }
+                if (!hasValidTitle)
+                {
+                    AddCorruptedBeatmap(filePath, "Missing or empty Title");
+                    return false;
+                }
+                if (!hasValidArtist)
+                {
+                    AddCorruptedBeatmap(filePath, "Missing or empty Artist");
+                    return false;
+                }
+                if (!hasValidVersion)
+                {
+                    AddCorruptedBeatmap(filePath, "Missing or empty Version/Difficulty");
+                    return false;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AddCorruptedBeatmap(filePath, $"Validation error: {ex.Message}");
+                return false;
+            }
+        }
+
+        // Add a method to scan for new maps with comprehensive validation
         public List<BeatmapInfo> ScanForNewMaps(string songsDirectory, List<BeatmapSet> existingSets)
         {
-            Console.WriteLine("Scanning for new beatmap files...");
+            Console.WriteLine("Scanning for new beatmap files with full validation...");
             List<BeatmapInfo> newBeatmaps = new List<BeatmapInfo>();
             
             try
@@ -941,15 +1063,41 @@ namespace C4TX.SDL.Services
                     }
                 }
                 
-                Console.WriteLine($"Found {newBeatmapFiles.Count} new beatmap files");
+                Console.WriteLine($"Found {newBeatmapFiles.Count} potential new beatmap files");
                 
                 if (newBeatmapFiles.Count == 0)
                 {
                     return newBeatmaps;
                 }
                 
+                // Validate beatmap files in parallel for better performance
+                Console.WriteLine($"Validating {newBeatmapFiles.Count} beatmap files in parallel...");
+                var validatedFiles = new List<string>();
+                object validationLock = new object();
+                
+                Parallel.ForEach(newBeatmapFiles, new ParallelOptions 
+                { 
+                    MaxDegreeOfParallelism = Environment.ProcessorCount 
+                }, file =>
+                {
+                    if (ValidateBeatmapFile(file))
+                    {
+                        lock (validationLock)
+                        {
+                            validatedFiles.Add(file);
+                        }
+                    }
+                });
+                
+                Console.WriteLine($"Found {validatedFiles.Count} valid new beatmap files after validation");
+                
+                if (validatedFiles.Count == 0)
+                {
+                    return newBeatmaps;
+                }
+                
                 // Group beatmap files by directory to create sets
-                var beatmapsByDir = newBeatmapFiles
+                var beatmapsByDir = validatedFiles
                     .GroupBy(file => Path.GetDirectoryName(file) ?? string.Empty)
                     .ToDictionary(
                         group => group.Key,
