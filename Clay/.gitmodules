@@ -1,0 +1,3 @@
+[submodule "Clay.Builder/src/clay"]
+	path = Clay.Builder/src/clay
+	url = https://github.com/Orcolom/clay.git

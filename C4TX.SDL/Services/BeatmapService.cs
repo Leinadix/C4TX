@@ -52,6 +52,11 @@ namespace C4TX.SDL.Services
 
         public List<BeatmapSet> GetAvailableBeatmapSets()
         {
+            return GetAvailableBeatmapSetsAsync().GetAwaiter().GetResult();
+        }
+
+        public async Task<List<BeatmapSet>> GetAvailableBeatmapSetsAsync()
+        {
             List<BeatmapSet> beatmapSets;
             
             try
@@ -79,7 +84,7 @@ namespace C4TX.SDL.Services
                 }
                 
                 // Load beatmaps from files
-                beatmapSets = LoadBeatmapSetsFromFiles();
+                beatmapSets = await LoadBeatmapSetsFromFilesAsync();
                 
                 // Save to database for future use
                 _databaseService.SaveBeatmapSets(beatmapSets);
@@ -111,7 +116,7 @@ namespace C4TX.SDL.Services
             }
         }
         
-        private List<BeatmapSet> LoadBeatmapSetsFromFiles()
+        private async Task<List<BeatmapSet>> LoadBeatmapSetsFromFilesAsync()
         {
             var result = new List<BeatmapSet>();
             
@@ -194,14 +199,14 @@ namespace C4TX.SDL.Services
                     if (string.IsNullOrWhiteSpace(set.Artist) || string.IsNullOrWhiteSpace(set.Title))
                         continue;
                     
-                    // Process each beatmap file in the set
-                    foreach (var beatmapFile in beatmapList)
+                    // Process beatmap files in parallel for better performance
+                    var beatmapTasks = beatmapList.Select(beatmapFile => Task.Run(() =>
                     {
                         try
                         {
                             var beatmap = LoadBasicInfoFromFile(beatmapFile);
                             if (beatmap == null)
-                                continue;
+                                return null;
                             
                             // Get length of the beatmap
                             double length = 0;
@@ -225,7 +230,7 @@ namespace C4TX.SDL.Services
                             string mapHash = CalculateBeatmapHash(beatmapFile);
                             
                             // Create a new beatmap info
-                            var beatmapInfo = new BeatmapInfo
+                            return new BeatmapInfo
                             {
                                 Id = mapHash, // Use hash instead of filename
                                 SetId = set.Id,
@@ -237,12 +242,23 @@ namespace C4TX.SDL.Services
                                 Creator = beatmap.Creator,
                                 AudioFilename = beatmap.AudioFilename
                             };
-                            
-                            set.Beatmaps.Add(beatmapInfo);
                         }
                         catch (Exception ex)
                         {
                             Console.WriteLine($"Error processing beatmap {beatmapFile}: {ex.Message}");
+                            return null;
+                        }
+                    })).ToArray();
+                    
+                    // Wait for all tasks to complete and collect results
+                    var beatmapResults = await Task.WhenAll(beatmapTasks);
+                    
+                    // Add successful results to the set
+                    foreach (var beatmapInfo in beatmapResults)
+                    {
+                        if (beatmapInfo != null)
+                        {
+                            set.Beatmaps.Add(beatmapInfo);
                         }
                     }
                     

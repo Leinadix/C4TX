@@ -17,7 +17,7 @@ namespace C4TX.SDL.Models
         public int KeyCount { get; set; }
         public double Length { get; set; } // in milliseconds
         public double BPM { get; set; } // Beats per minute
-        public string MapHash { get; set; } = string.Empty; // SHA256 hash of the map file
+        public string MapHash { get; set; } = ""; // SHA256 hash of the map file
         
         public Beatmap()
         {

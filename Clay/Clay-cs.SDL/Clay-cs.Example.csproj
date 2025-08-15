@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <RootNamespace>Clay_cs.Example</RootNamespace>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <PublishAot>true</PublishAot>
+        <PublishSingleFile>true</PublishSingleFile>
+        <TargetFrameworks>net9.0;net8.0</TargetFrameworks>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Clay-cs\Clay-cs.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Raylib-CSharp-Vinculum" Version="5.0.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Update="resources\profile-picture.png">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+      <None Update="resources\Roboto-Regular.ttf">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+      <None Update="resources\RobotoMono-Medium.ttf">
+        <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
+</Project>

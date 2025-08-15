@@ -479,6 +479,10 @@ namespace C4TX.SDL.Engine
 
         public static void TriggerMapReload()
         {
+            // Reset state tracking for new selection
+            RenderEngine._lastBackgroundRequest = "";
+            RenderEngine._lastDifficultyRate = 0;
+
             _cachedScoreMapHash = string.Empty;
             _cachedScores.Clear();
             _hasCheckedCurrentHash = false;
@@ -504,6 +508,37 @@ namespace C4TX.SDL.Engine
             {
                 RenderEngine._cachedSongListItems.Add((flatCounter, 1));
                 flatCounter++;
+            }
+
+            var selectedBeatmap = _beatmapService.LoadBeatmapFromFile(_availableBeatmapSets[_selectedSetIndex].Beatmaps[_selectedDifficultyIndex].Path);
+
+            // Preload calculations for the newly selected difficulty
+            var selectedSet = _availableBeatmapSets[_selectedSetIndex];
+            if (_selectedDifficultyIndex < selectedSet.Beatmaps.Count)
+            {
+                var selectedBeatmapInfo = selectedSet.Beatmaps[_selectedDifficultyIndex];
+                if (selectedBeatmapInfo != null)
+                {
+                    // Load the beatmap from file for difficulty calculation
+                    var beatmapService = _beatmapService;
+
+                    if (selectedBeatmap != null)
+                    {
+                        // Preload difficulty calculation
+                        BackgroundProcessor.PreloadDifficultyCalculation(
+                            selectedBeatmap,
+                            GameEngine._currentRate,
+                            selectedBeatmap.MapHash
+                        );
+                    }
+
+                    // Preload background texture
+                    BackgroundProcessor.PreloadBackgroundTexture(
+                        selectedSet.DirectoryPath,
+                        selectedBeatmapInfo.AudioFilename, // Use available filename
+                        400, 200
+                    );
+                }
             }
         }
 
@@ -650,8 +685,8 @@ namespace C4TX.SDL.Engine
 
                     Renderer.RenderEngine.Render();
 
-                    // Small delay to not hog CPU
-                    SDL_Delay(1);
+                    // Remove artificial frame rate cap for maximum performance
+                    SDL_Delay(1); // Commented out - this was limiting FPS to ~60-70
                     mouseDownLastframe = mouseDown;
 
                     lastFrameTime = _currentTime;
